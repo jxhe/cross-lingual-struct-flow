@@ -22,9 +22,7 @@ def init_config():
     # train and test data
     parser.add_argument('--lang', type=str,
         help='language')
-    parser.add_argument('--train_file', type=str, help='train data')
-    parser.add_argument('--test_file', default='', type=str, help='test data')
-
+    
     # model config
     parser.add_argument('--model', choices=['gaussian', 'nice'], default='gaussian')
     parser.add_argument('--mode', 
@@ -102,6 +100,8 @@ def main(args):
     num_dims = len(train_data[0][0])
     print('complete reading data')
 
+    print("embedding dims {}".format(num_dims))
+    print("#tags {}".format(len(tag_dict)))
     print("#train sentences: {}".format(len(train_data)))
     print("#dev sentences: {}".format(len(val_data)))
     print("#test sentences: {}".format(len(test_data)))
@@ -141,8 +141,6 @@ def main(args):
     print('begin training')
 
     train_iter = report_obj = report_jc = report_ll = report_num_words = 0
-    best_score = 0.
-    not_improved = 0
 
     # print the accuracy under init params
     model.eval()
@@ -151,6 +149,7 @@ def main(args):
     print("\n*****starting acc {}, max_var {:.4f}, min_var {:.4f}*****\n".format(
           acc, model.var.max().item(), model.var.min().item()))
 
+    opt_dict = {"not_improved": 0, "lr": args.lr, "best_score": 0}
 
     model.train()
     for epoch in range(args.epochs):
@@ -205,13 +204,19 @@ def main(args):
                 print('\nDEV: *****epoch {}, iter {}, acc {}*****\n'.format(
                     epoch, train_iter, acc))
 
-            if acc > best_score:
-                best_score = acc
-                not_improved = 0
+            if acc > opt_dict["best_score"]:
+                opt_dict["best_score"] = acc
+                opt_dict["not_improved"] = 0
                 torch.save(model.state_dict(), args.save_path)
             else:
-                not_improved += 1
+                opt_dict["not_improved"] += 1
                 if not_improved >= 5:
+                    opt_dict["best_score"] = acc
+                    opt_dict["not_improved"] = 0
+                    opt_dict["lr"] = opt_dict["lr"] * lr_decay
+                    model.load_state_dict(torch.load(args.save_path))
+                    print("new lr: {}".format(opt_dict["lr"]))
+                    optimizer = torch.optim.Adam(model.parameters(), lr=opt_dict["lr"])
         else:
             torch.save(model.state_dict(), args.save_path)
 
