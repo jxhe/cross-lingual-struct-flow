@@ -385,13 +385,14 @@ class MarkovFlow(nn.Module):
                                      label=True,
                                      shuffle=False):
             total += sum(len(sent) for sent in sents)
-            sents_t, masks = to_input_tensor(sents,
-                                               pad,
-                                               device=self.device)
+            sents_t, tags_t, masks = to_input_tensor(sents,
+                                                     tags,
+                                                     pad,
+                                                     device=self.device)
             sents_t, _ = self.transform(sents_t)
 
             # index: (batch_size, seq_length)
-            index = self._viterbi(sents_var, masks)
+            index = self._viterbi(sents_t, masks)
 
             index_all += list(index)
             eval_tags += tags
@@ -446,13 +447,14 @@ class MarkovFlow(nn.Module):
                                      label=True,
                                      shuffle=False):
             total += sum(len(sent) for sent in sents)
-            sents_var, masks = to_input_tensor(sents,
-                                               pad,
-                                               device=self.device)
-            sents_var, _ = self.transform(sents_var)
+            sents_t, tags_t, masks = to_input_tensor(sents,
+                                                     tag,
+                                                     pad,
+                                                     device=self.device)
+            sents_t, _ = self.transform(sents_t)
 
             # index: (batch_size, seq_length)
-            index = self._viterbi(sents_var, masks)
+            index = self._viterbi(sents_t, masks)
 
             index_all += list(index)
             eval_tags += tags

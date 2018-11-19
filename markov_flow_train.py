@@ -22,7 +22,7 @@ def init_config():
     # train and test data
     parser.add_argument('--lang', type=str,
         help='language')
-    
+
     # model config
     parser.add_argument('--model', choices=['gaussian', 'nice'], default='gaussian')
     parser.add_argument('--mode', 
@@ -93,9 +93,11 @@ def main(args):
     val_vec = sents_to_vec(word_vec_dict, val_text)
     test_vec = sents_to_vec(word_vec_dict, test_text)
 
-    train_tag_ids, tag_dict = sents_to_tagid(train_tags)
-    val_tag_ids, tag_dict = sents_to_tagid(val_tags, tag_dict)
-    test_tag_ids, tag_dict = sents_to_tagid(test_tags, tag_dict)
+    tag_dict = read_tag_map("tag_map.txt")
+
+    train_tag_ids, _ = sents_to_tagid(train_tags, tag_dict)
+    val_tag_ids, _ = sents_to_tagid(val_tags, tag_dict)
+    test_tag_ids, _ = sents_to_tagid(test_tags, tag_dict)
 
     num_dims = len(train_data[0][0])
     print('complete reading data')
@@ -105,6 +107,8 @@ def main(args):
     print("#train sentences: {}".format(len(train_data)))
     print("#dev sentences: {}".format(len(val_data)))
     print("#test sentences: {}".format(len(test_data)))
+
+    args.num_state = len(tag_dict)
 
     log_niter = (len(train_data)//args.batch_size)//10
 
@@ -160,7 +164,7 @@ def main(args):
             train_iter += 1
             batch_size = len(sents)
             num_words = sum(len(sent) for sent in sents)
-            sents_t, masks = to_input_tensor(sents, pad, device=args.device)
+            sents_t, tags_t, masks = to_input_tensor(sents, tags, pad, device=args.device)
             optimizer.zero_grad()
 
             if args.mode == "unsupervised":

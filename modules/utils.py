@@ -81,6 +81,15 @@ def read_conll(fname):
 
     return text, tags
 
+def read_tag_map(fname):
+    tag_map = {}
+    with open(fname, "r") as fin:
+        for line in fin:
+            key, value = line.split()
+            tag_map[key] = int(value)
+
+    return tag_map
+
 def write_conll(fname, sentences, pred_tags, null_total):
     with open(fname, 'w') as fout:
         for (pred, null_sent, sent) in zip(pred_tags, null_total, sentences):
@@ -99,30 +108,32 @@ def write_conll(fname, sentences, pred_tags, null_total):
                     head_list[i][1]))
             fout.write('\n')
 
-def input_transpose(sents, pad):
+def input_transpose(sents, tags, pad):
     max_len = max(len(s) for s in sents)
     batch_size = len(sents)
-
     sents_t = []
+    tags_t = []
     masks = []
     for i in range(max_len):
         sents_t.append([sent[i] if len(sent) > i else pad for sent in sents])
+        tags_t.append([tag[i] if len(tag) > i else -1 for tag in tags])
         masks.append([1 if len(sent) > i else 0 for sent in sents])
 
-    return sents_t, masks
+    return sents_t, tags_t, masks
 
-def to_input_tensor(sents, pad, device):
+def to_input_tensor(sents, tags, pad, device):
     """
     return a tensor of shape (src_sent_len, batch_size)
     """
 
-    sents, masks = input_transpose(sents, pad)
+    sents, tags, masks = input_transpose(sents, pad)
 
 
     sents_t = torch.tensor(sents, dtype=torch.float32, requires_grad=False, device=device)
+    tags_t = torch.tensor(tags, dtype=torch.long, requires_grad=False, device=device)
     masks_t = torch.tensor(masks, dtype=torch.float32, requires_grad=False, device=device)
 
-    return sents_t, masks_t
+    return sents_t, tags_t, masks_t
 
 def data_iter(data, batch_size, label=False, shuffle=True):
     index_arr = np.arange(len(data))
