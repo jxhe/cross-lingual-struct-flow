@@ -20,8 +20,7 @@ def init_config():
     parser = argparse.ArgumentParser(description='POS tagging')
 
     # train and test data
-    parser.add_argument('--lang', type=str,
-        help='language')
+    parser.add_argument('--lang', type=str, help='language')
 
     # model config
     parser.add_argument('--model', choices=['gaussian', 'nice'], default='gaussian')
@@ -99,23 +98,23 @@ def main(args):
     val_tag_ids, _ = sents_to_tagid(val_tags, tag_dict)
     test_tag_ids, _ = sents_to_tagid(test_tags, tag_dict)
 
-    num_dims = len(train_data[0][0])
+    num_dims = len(train_vec[0][0])
     print('complete reading data')
 
     print("embedding dims {}".format(num_dims))
     print("#tags {}".format(len(tag_dict)))
-    print("#train sentences: {}".format(len(train_data)))
-    print("#dev sentences: {}".format(len(val_data)))
-    print("#test sentences: {}".format(len(test_data)))
+    print("#train sentences: {}".format(len(train_vec)))
+    print("#dev sentences: {}".format(len(val_vec)))
+    print("#test sentences: {}".format(len(test_vec)))
 
     args.num_state = len(tag_dict)
 
-    log_niter = (len(train_data)//args.batch_size)//10
+    log_niter = (len(train_vec)//args.batch_size)//10
 
     pad = np.zeros(num_dims)
     device = torch.device("cuda" if args.cuda else "cpu")
     args.device = device
-    init_seed = to_input_tensor(generate_seed(train_data, args.batch_size),
+    init_seed = to_input_tensor(generate_seed(train_vec, args.batch_size),
                                   pad, device=device)
 
     model = MarkovFlow(args, num_dims).to(device)
