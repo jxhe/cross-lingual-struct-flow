@@ -50,6 +50,7 @@ class MarkovFlow(nn.Module):
                                         self.num_dims,
                                         self.device)
 
+        # prior
         self.pi = torch.zeros(self.num_state,
                               dtype=torch.float32,
                               requires_grad=False,
@@ -119,18 +120,23 @@ class MarkovFlow(nn.Module):
         return x, jacobian_loss
 
 
-    def forward(self, sents, masks):
+    def unsupervised_loss(self, sents, masks):
         """
-        sents: (sent_length, batch_size, self.num_dims)
-        masks: (sent_length, batch_size)
+        Args:
+            sents: (sent_length, batch_size, self.num_dims)
+            masks: (sent_length, batch_size)
+
+        Returns: Tensor1, Tensor2
+            Tensor1: negative log likelihood, shape ([])
+            Tensor2: jacobian loss, shape ([])
+
 
         """
-        max_length = sents.size()[0]
+        max_length, batch_size, _ = sents.size()
         sents, jacobian_loss = self.transform(sents)
 
         assert self.var.data.min() > 0
 
-        batch_size = len(sents[0])
         self.logA = self._calc_logA()
         self.log_density_c = self._calc_log_density_c()
 
@@ -146,7 +152,81 @@ class MarkovFlow(nn.Module):
         # calculate objective from log space
         objective = torch.sum(log_sum_exp(alpha, dim=1))
 
-        return objective, jacobian_loss
+        return -objective, jacobian_loss
+
+    def supervised_loss(self, sents, tags, masks):
+        """
+        Args:
+            sents: (sent_length, batch_size, num_dims)
+            masks: (sent_length, batch_size)
+            tags:  (sent_length, batch_size)
+
+        Returns: Tensor1, Tensor2
+            Tensor1: negative log likelihood, shape ([])
+            Tensor2: jacobian loss, shape ([])
+
+        """      
+
+        sent_len, batch_size, _ = sents.size()
+
+        # (sent_length, batch_size, num_dims) 
+        sents, jacobian_loss = self.transform(sents)
+
+        # ()
+        log_density_c = self._calc_log_density_c()
+
+        # (1, 1, num_state, num_dims)
+        means = self.means.view(1, 1, self.num_state, self.num_dims)
+        means = means.expand(sent_len, batch_size, 
+            self.num_state, self.num_dims)
+        tag_id = tags.view(*tags.size(), 1, 1).expand(sent_len, 
+            batch_size, 1, self.num_dims)
+
+        # (sent_len, batch_size, num_dims)
+        means = torch.gather(means, dim=2, index=tag_id).squeeze(2)
+
+        var = self.var.view(1, 1, self.num_dims)
+
+        # (sent_len, batch_size)
+        log_emission_prob = self.log_density_c - \
+                       0.5 * torch.sum((means-sents) ** 2 / var, dim=-1)
+
+        log_emission_prob = torch.mul(masks, log_emission_prob).sum()
+
+        # (num_state, num_state)
+        log_trans = self._calc_logA()
+
+        # (sent_len, batch_size, num_state, num_state)
+        log_trans_prob = logA.view(1, 1, *logA.size()).expand(
+            sent_len, batch_size, *logA.size())
+
+        # (sent_len-1, batch_size, 1, num_state)
+        tag_id = tags.view(*tags.size(), 1, 1).expand(sent_len, 
+            batch_size, 1, self.num_state)[:-1]
+
+        # (sent_len-1, batch_size, 1, num_state)
+        log_trans_prob = torch.gather(log_trans_prob[:-1], dim=2, index=tag_id)
+
+        # (sent_len-1, batch_size, 1, 1)
+        tag_id = tags.view(*tags.size(), 1, 1)[1:]
+
+        # (sent_len-1, batch_size)
+        log_trans_prob = torch.gather(log_trans_prob, dim=3, 
+            index=tag_id).squeeze()
+
+        log_trans_prob = torch.mul(masks[1:], log_trans_prob)
+
+        log_trans_prior = self.pi.expand(batch_size, self.num_state)
+        tag_id = tags[0].unsqueeze(dim=1)
+
+        # (batch_size)
+        log_trans_prior = torch.gather(log_trans_prior, dim=1, 
+            index=tag_id).sum()
+
+        log_trans_prob = log_trans_prior + log_trans_prob.sum()
+
+        return -(log_trans_prob + log_emission_prob)    
+
 
     def _calc_alpha(self, sents, masks):
         """
@@ -197,8 +277,11 @@ class MarkovFlow(nn.Module):
 
     def _eval_density(self, words):
         """
-        words: (batch_size, self.num_dims)
+        Args:
+            words: (batch_size, self.num_dims)
 
+        Returns: Tensor1
+            Tensor1: the density tensor with shape (batch_size, num_state)
         """
 
         batch_size = words.size(0)
@@ -275,13 +358,59 @@ class MarkovFlow(nn.Module):
 
         return torch.cat(assign_all, dim=1)
 
-    def test(self,
-             test_data,
-             test_tags,
-             sentences=None,
-             tagging=False,
-             path=None,
-             null_index=None):
+    def test_supervised(self,
+                        test_data,
+                        test_tags):
+        """Evaluate tagging performance with 
+        token-level supervised accuracy
+
+        Args:
+            test_data: nested list of sentences
+            test_tags: nested list of gold tag ids
+
+        Returns: a scalar accuracy value
+
+        """
+
+        pad = np.zeros(self.num_dims)
+
+        total = 0.0
+        correct = 0.0
+
+        index_all = []
+        eval_tags = []
+
+        for sents, tags in data_iter(list(zip(test_data, test_tags)),
+                                     batch_size=self.args.batch_size,
+                                     label=True,
+                                     shuffle=False):
+            total += sum(len(sent) for sent in sents)
+            sents_t, masks = to_input_tensor(sents,
+                                               pad,
+                                               device=self.device)
+            sents_t, _ = self.transform(sents_t)
+
+            # index: (batch_size, seq_length)
+            index = self._viterbi(sents_var, masks)
+
+            index_all += list(index)
+            eval_tags += tags
+
+        for (seq_gold_tags, seq_model_tags) in zip(eval_tags, index_all):
+            for (gold_tag, model_tag) in zip(seq_gold_tags, seq_model_tags):
+                if model_tag == gold_tag:
+                    correct += 1
+
+        return correct / total
+
+
+    def test_unsupervised(self,
+                         test_data,
+                         test_tags,
+                         sentences=None,
+                         tagging=False,
+                         path=None,
+                         null_index=None):
         """Evaluate tagging performance with
         many-to-1 metric and VM score
 
@@ -314,7 +443,7 @@ class MarkovFlow(nn.Module):
 
         for sents, tags in data_iter(list(zip(test_data, test_tags)),
                                      batch_size=self.args.batch_size,
-                                     is_test=True,
+                                     label=True,
                                      shuffle=False):
             total += sum(len(sent) for sent in sents)
             sents_var, masks = to_input_tensor(sents,

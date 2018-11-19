@@ -1,39 +1,11 @@
-import torch
-from collections import defaultdict
 import math
 import numpy as np
 from math import log
+from collections import defaultdict
+from io import open
 
-class ConllSent(object):
-    """docstring for ConllSent"""
-    def __init__(self, key_list=["word", "tag", "head"]):
-        super(ConllSent, self).__init__()
-        self.sent_dict = {}
-        self.keys = key_list
-        for key in key_list:
-            self.sent_dict[key] = []
-
-    def __getitem__(self, key):
-        return self.sent_dict[key]
-
-    def __setitem__(self, key, item):
-        self.sent_dict[key] = item
-
-    def __len__(self):
-        return len(self.sent_dict["word"])
-
-def is_number(s):
-    try:
-        float(s)
-        return True
-    except ValueError:
-        return False
-
-def cast_to_int(s):
-    try:
-        return int(s)
-    except ValueError:
-        return s
+import torch
+from conllu import parse_incr
 
 def word2id(sentences):
     """map words to word ids
@@ -81,47 +53,33 @@ def sents_to_vec(vec_dict, sentences):
 
     return embeddings
 
-def sents_to_tagid(sentences):
+def sents_to_tagid(sentences, dict_=None):
     """transform tagged sents to tagids,
     also return the look up table
     """
-    ids = defaultdict(lambda: len(ids))
-    id_sents = [[ids[tag] for tag in sent["tag"]] for sent in sentences]
+    if dict_ is None:
+        ids = defaultdict(lambda: len(ids))
+    else:
+        ids = dict_
+    id_sents = [[ids[tag] for tag in sent] for sent in sentences]
     return id_sents, ids
 
-def read_conll(fname, max_len=1e3, rm_null=True, prc_num=True):
-    sentences = []
-    sent = ConllSent()
+def read_conll(fname):
+    text = []
+    tags = []
+    fin = open(fname, "r", encoding="utf-8")
+    data_file = parse_incr(fin)
+    for sent in data_file:
+        sent_list = []
+        tag_list = []
+        for token in sent:
+            sent_list.append(token["form"])
+            tag_list.append(token["upostag"])
 
-    null_total = []
-    null_sent = []
-    loc = 0
-    with open(fname) as fin:
-        for line in fin:
-            if line != '\n':
-                line = line.strip().split('\t')
-                sent["head"].append((int(line[0]), 
-                    cast_to_int(line[3])))
-                if rm_null and line[2] == '-NONE-':
-                    null_sent.append(loc)
-                else:
-                    sent["tag"].append(line[2])
-                    if prc_num and is_number(line[1]):
-                        sent["word"].append('0')
-                    else:
-                        sent["word"].append(line[1])
+        text.append(sent_list)
+        tags.append(tag_list)
 
-                loc += 1
-            else:
-                loc = 0
-                if len(sent) > 0 and len(sent) <= max_len:
-                    sentences.append(sent)
-                    null_total.append(null_sent)
-
-                null_sent = []
-                sent = ConllSent()
-
-    return sentences, null_total
+    return text, tags
 
 def write_conll(fname, sentences, pred_tags, null_total):
     with open(fname, 'w') as fout:
@@ -166,7 +124,7 @@ def to_input_tensor(sents, pad, device):
 
     return sents_t, masks_t
 
-def data_iter(data, batch_size, is_test=False, shuffle=True):
+def data_iter(data, batch_size, label=False, shuffle=True):
     index_arr = np.arange(len(data))
     # in_place operation
 
@@ -178,7 +136,7 @@ def data_iter(data, batch_size, is_test=False, shuffle=True):
         batch_ids = index_arr[i * batch_size: (i + 1) * batch_size]
         batch_data = [data[index] for index in batch_ids]
 
-        if is_test:
+        if label:
             # batch_data.sort(key=lambda e: -len(e[0]))
             test_data = [data_tuple[0] for data_tuple in batch_data]
             tags = [data_tuple[1] for data_tuple in batch_data]
