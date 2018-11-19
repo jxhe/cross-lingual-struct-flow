@@ -48,7 +48,7 @@ def sents_to_vec(vec_dict, sentences):
     """
     embeddings = []
     for sent in sentences:
-        sample = [vec_dict[word] for word in sent["word"]]
+        sample = [vec_dict[word] for word in sent]
         embeddings.append(sample)
 
     return embeddings
