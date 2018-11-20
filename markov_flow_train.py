@@ -28,6 +28,9 @@ def init_config():
                          choices=['supervised', 'unsupervised', 'both', 'eval'], 
                          default='supervised')
 
+    # optimization params
+    parser.add_argument('--opt', choices=['adam', 'sgd'], default='adam')
+
     # pretrained model options
     parser.add_argument('--load_nice', default='', type=str,
         help='load pretrained projection model, ignored by default')
@@ -130,6 +133,8 @@ def main(args):
     #           % (accuracy, vm, model.var.data.max(), model.var.data.min()), file=sys.stderr)
     #     return
 
+    opt_dict = {"not_improved": 0, "lr": 0., "best_score": 0}
+
     if args.mode == "eval":
         model.eval()
         with torch.no_grad():
@@ -138,7 +143,14 @@ def main(args):
         print("accuracy {}".format(acc))
         return		
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+    if args.opt == "adam":
+        optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+        opt_dict["lr"] = 0.001
+    elif args.opt == "sgd":
+        optimizer = torch.optim.SGD(model.parameters(), lr=1.)
+        opt_dict["lr"] = 1.
+    else:
+        raise ValueError("{} is not supported".format(args.opt))
 
     begin_time = time.time()
     print('begin training')
@@ -151,8 +163,6 @@ def main(args):
         acc = model.test_supervised(test_vec, test_tag_ids)
     print("\n*****starting acc {}, max_var {:.4f}, min_var {:.4f}*****\n".format(
           acc, model.var.max().item(), model.var.min().item()))
-
-    opt_dict = {"not_improved": 0, "lr": args.lr, "best_score": 0}
 
     model.train()
     for epoch in range(args.epochs):
@@ -219,7 +229,10 @@ def main(args):
                     opt_dict["lr"] = opt_dict["lr"] * lr_decay
                     model.load_state_dict(torch.load(args.save_path))
                     print("new lr: {}".format(opt_dict["lr"]))
-                    optimizer = torch.optim.Adam(model.parameters(), lr=opt_dict["lr"])
+                    if args.opt == "adam":
+                        optimizer = torch.optim.Adam(model.parameters(), lr=opt_dict["lr"])
+                    elif args.opt == "sgd":
+                        optimizer = torch.optim.SGD(model.parameters(), lr=opt_dict["lr"])
         else:
             torch.save(model.state_dict(), args.save_path)
 
