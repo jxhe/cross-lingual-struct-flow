@@ -197,8 +197,8 @@ class MarkovFlow(nn.Module):
         log_trans = self._calc_logA()
 
         # (sent_len, batch_size, num_state, num_state)
-        log_trans_prob = logA.view(1, 1, *logA.size()).expand(
-            sent_len, batch_size, *logA.size())
+        log_trans_prob = log_trans.view(1, 1, *log_trans.size()).expand(
+            sent_len, batch_size, *log_trans.size())
 
         # (sent_len-1, batch_size, 1, num_state)
         tag_id = tags.view(*tags.size(), 1, 1).expand(sent_len, 
@@ -225,7 +225,7 @@ class MarkovFlow(nn.Module):
 
         log_trans_prob = log_trans_prior + log_trans_prob.sum()
 
-        return -(log_trans_prob + log_emission_prob)    
+        return -(log_trans_prob + log_emission_prob), jacobian_loss    
 
 
     def _calc_alpha(self, sents, masks):

@@ -158,8 +158,8 @@ def main(args):
     for epoch in range(args.epochs):
         # model.print_params()
         report_obj = report_jc = report_ll = report_num_words = 0
-        for sents, tags in data_iter(list(zip(train_vec, train_tag_ids), batch_size=args.batch_size, 
-                               label=True, shuffle=True)):
+        for sents, tags in data_iter(list(zip(train_vec, train_tag_ids)), batch_size=args.batch_size, 
+                               label=True, shuffle=True):
             train_iter += 1
             batch_size = len(sents)
             num_words = sum(len(sent) for sent in sents)
@@ -213,7 +213,7 @@ def main(args):
                 torch.save(model.state_dict(), args.save_path)
             else:
                 opt_dict["not_improved"] += 1
-                if not_improved >= 5:
+                if opt_dict["not_improved"] >= 5:
                     opt_dict["best_score"] = acc
                     opt_dict["not_improved"] = 0
                     opt_dict["lr"] = opt_dict["lr"] * lr_decay

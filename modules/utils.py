@@ -116,7 +116,7 @@ def input_transpose(sents, tags, pad):
     masks = []
     for i in range(max_len):
         sents_t.append([sent[i] if len(sent) > i else pad for sent in sents])
-        tags_t.append([tag[i] if len(tag) > i else -1 for tag in tags])
+        tags_t.append([tag[i] if len(tag) > i else 0 for tag in tags])
         masks.append([1 if len(sent) > i else 0 for sent in sents])
 
     return sents_t, tags_t, masks
