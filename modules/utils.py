@@ -61,7 +61,7 @@ def sents_to_tagid(sentences, dict_=None):
         ids = defaultdict(lambda: len(ids))
     else:
         ids = dict_
-    id_sents = [[ids[tag] for tag in sent] for sent in sentences]
+    id_sents = [[ids[tag] if tag!= "_" else ids["X"] for tag in sent] for sent in sentences]
     return id_sents, ids
 
 def read_conll(fname):

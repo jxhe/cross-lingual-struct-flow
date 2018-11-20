@@ -136,7 +136,7 @@ def main(args):
             acc = model.test_supervised(test_vec, test_tag_ids)
 
         print("accuracy {}".format(acc))
-
+        return		
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
