@@ -114,8 +114,8 @@ def main(args):
     pad = np.zeros(num_dims)
     device = torch.device("cuda" if args.cuda else "cpu")
     args.device = device
-    init_seed = to_input_tensor(generate_seed(train_vec, args.batch_size),
-                                  pad, device=device)
+    seed_vec, seed_tags = generate_seed(train_vec, train_tag_ids, args.batch_size)
+    init_seed = to_input_tensor(seed_vec, seed_tags, pad, device=device)
 
     model = MarkovFlow(args, num_dims).to(device)
 

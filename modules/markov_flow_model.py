@@ -80,7 +80,7 @@ class MarkovFlow(nn.Module):
 
         # initialize mean and variance with empirical values
         with torch.no_grad():
-            sents, masks = init_seed
+            sents, tags, masks = init_seed
             sents, _ = self.transform(sents)
             seq_length, _, features = sents.size()
             flat_sents = sents.view(-1, features)

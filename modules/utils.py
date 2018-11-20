@@ -126,7 +126,7 @@ def to_input_tensor(sents, tags, pad, device):
     return a tensor of shape (src_sent_len, batch_size)
     """
 
-    sents, tags, masks = input_transpose(sents, pad)
+    sents, tags, masks = input_transpose(sents, tags, pad)
 
 
     sents_t = torch.tensor(sents, dtype=torch.float32, requires_grad=False, device=device)
@@ -159,16 +159,17 @@ def data_iter(data, batch_size, label=False, shuffle=True):
             # batch_data.sort(key=lambda e: -len(e))
             yield batch_data
 
-def generate_seed(data, size, shuffle=True):
+def generate_seed(data, tags, size, shuffle=True):
     index_arr = np.arange(len(data))
     # in_place operation
 
     if shuffle:
         np.random.shuffle(index_arr)
 
-    seed = [data[index] for index in index_arr[:size]]
+    seed_text = [data[index] for index in index_arr[:size]]
+    seed_tag = [tags[index] for index in index_arr[:size]]
 
-    return seed
+    return seed_text, seed_tag
 
 def get_tag_set(tag_list):
     tag_set = set()
