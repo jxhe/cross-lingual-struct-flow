@@ -139,8 +139,9 @@ def main(args):
         model.eval()
         with torch.no_grad():
             acc = model.test_supervised(test_vec, test_tag_ids)
-
+            m1, vm, oneone = model.test_unsupervised(test_vec, test_tag_ids)
         print("accuracy {}".format(acc))
+        print("M1 {}, VM {}, one-to-one {}".format(m1, vm, oneone))
         return		
 
     if args.opt == "adam":
@@ -238,8 +239,10 @@ def main(args):
 
         with torch.no_grad():
             acc = model.test_supervised(test_vec, test_tag_ids)
-            print('\nTEST: *****epoch {}, iter {}, acc {}*****\n'.format(
-                epoch, train_iter, acc))
+            m1, vm, oneone = model.test_unsupervised(test_vec, test_tag_ids)
+        print('\nTEST: *****epoch {}, iter {}, acc {}*****\n'.format(
+            epoch, train_iter, acc))
+        print("\nTEST: M1 {}, VM {}, one-to-one {}".format(m1, vm, oneone))
 
         model.train()
 

@@ -12,6 +12,7 @@ import numpy as np
 from torch.nn import Parameter
 from torch.nn.utils.rnn import pad_packed_sequence, pack_padded_sequence
 from sklearn.metrics.cluster import v_measure_score
+from scipy.optimize import linear_sum_assignment
 
 from .utils import log_sum_exp, data_iter, to_input_tensor, \
                    write_conll
@@ -413,7 +414,8 @@ class MarkovFlow(nn.Module):
                          path=None,
                          null_index=None):
         """Evaluate tagging performance with
-        many-to-1 metric and VM score
+        many-to-1 metric, VM score and 1-to-1
+        accuracy
 
         Args:
             test_data: nested list of sentences
@@ -425,7 +427,7 @@ class MarkovFlow(nn.Module):
                         tags for downstream parsing task
 
         Returns:
-            Tuple1: (M1, VM score)
+            Tuple1: (M1, VM score, 1-to-1 accuracy)
 
         """
 
@@ -468,6 +470,24 @@ class MarkovFlow(nn.Module):
                     if model_tag not in cnt_stats:
                         cnt_stats[model_tag] = Counter()
                     cnt_stats[model_tag][gold_tag] += 1
+
+        # evaluate one-to-one accuracy
+        cost_matrix = np.zeros((self.num_state, self.num_state))
+        for i in range(self.num_state):
+            for j in range(self.num_state):
+                cost_matrix[i][j] = -cnt_stats[j][i]
+
+        row_ind, col_ind = linear_sum_assignment(cost_matrix)
+        for (seq_gold_tags, seq_model_tags) in zip(eval_tags, index_all):
+            for (gold_tag, model_tag) in zip(seq_gold_tags, seq_model_tags):
+                model_tag = model_tag.item()
+                if col_ind[gold_tag] == model_tag:
+                    correct += 1 
+
+        one2one = correct / total
+
+        correct 0.       
+
         # match
         for tag in cnt_stats:
             match_dict[tag] = cnt_stats[tag].most_common(1)[0][0]
@@ -482,4 +502,4 @@ class MarkovFlow(nn.Module):
         if tagging:
             write_conll(path, sentences, index_all, null_index)
 
-        return correct/total, v_measure_score(gold_vm, model_vm)
+        return correct/total, v_measure_score(gold_vm, model_vm), one2one
