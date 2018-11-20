@@ -11,7 +11,7 @@ import argparse
 import importlib
 from io import open
 
-import fasttext
+import fastText
 from modules import *
 from multilingual_trans.fasttext import FastVector
 
@@ -24,8 +24,8 @@ config_file = "config.config_{}".format(args.lang)
 params = importlib.import_module(config_file).params
 args = argparse.Namespace(**vars(args), **params)
 
-word_vec_dict = model.load_model("fastText_data/wiki.{}.bin".format(args.lang))
-ndim = len(word_vec_dict["is"])
+word_vec_model = fastText.load_model("fastText_data/wiki.{}.bin".format(args.lang))
+ndim = len(word_vec_model.get_word_vector("is"))
 
 train_text, train_tags = read_conll(args.train_file)
 val_text, val_tags = read_conll(args.val_file)
@@ -42,11 +42,11 @@ print("vocab length {}".format(len(vocab)))
 # cnt = 0
 # oov = set()
 # for word in vocab:
-#     if word in word_vec_dict:
+#     if word in word_vec_model:
 #         if cnt == 0:
-#             sum_ = word_vec_dict[word]
+#             sum_ = word_vec_model[word]
 #         else:
-#             sum_ += word_vec_dict[word]
+#             sum_ += word_vec_model[word]
 #         cnt += 1
 #     else:
 #         oov.update([word])
@@ -65,6 +65,6 @@ with open(out_file, "w", encoding="utf-8") as fout:
     fout.write("{} {}\n".format(len(vocab), ndim))
     for word in vocab:
         fout.write("{} ".format(word))
-        for val in word_vec_dict[word]:
+        for val in word_vec_model.get_word_vector(word):
             fout.write("{} ".format(val))
         fout.write('\n')
