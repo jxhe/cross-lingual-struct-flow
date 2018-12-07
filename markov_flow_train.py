@@ -24,8 +24,8 @@ def init_config():
 
     # model config
     parser.add_argument('--model', choices=['gaussian', 'nice'], default='gaussian')
-    parser.add_argument('--mode', 
-                         choices=['supervised', 'unsupervised', 'both', 'eval'], 
+    parser.add_argument('--mode',
+                         choices=['supervised', 'unsupervised', 'both', 'eval'],
                          default='supervised')
 
     # optimization params
@@ -142,10 +142,10 @@ def main(args):
             m1, vm, oneone = model.test_unsupervised(test_vec, test_tag_ids)
         print("accuracy {}".format(acc))
         print("M1 {}, VM {}, one-to-one {}".format(m1, vm, oneone))
-        return		
+        return
 
     if args.opt == "adam":
-        optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+        optimizer = torch.optim.Adam(model.parameters(), lr=0.00001)
         opt_dict["lr"] = 0.001
     elif args.opt == "sgd":
         optimizer = torch.optim.SGD(model.parameters(), lr=1.)
@@ -162,14 +162,17 @@ def main(args):
     model.eval()
     with torch.no_grad():
         acc = model.test_supervised(test_vec, test_tag_ids)
+        m1, vm, oneone = model.test_unsupervised(test_vec, test_tag_ids)
+        print("\nTEST: M1 {}, VM {}, one-to-one {}".format(m1, vm, oneone))
     print("\n*****starting acc {}, max_var {:.4f}, min_var {:.4f}*****\n".format(
           acc, model.var.max().item(), model.var.min().item()))
+    print("\nstarting: M1 {}, VM {}, one-to-one {}".format(m1, vm, oneone))
 
     model.train()
     for epoch in range(args.epochs):
         # model.print_params()
         report_obj = report_jc = report_ll = report_num_words = 0
-        for sents, tags in data_iter(list(zip(train_vec, train_tag_ids)), batch_size=args.batch_size, 
+        for sents, tags in data_iter(list(zip(train_vec, train_tag_ids)), batch_size=args.batch_size,
                                label=True, shuffle=True):
             train_iter += 1
             batch_size = len(sents)
@@ -188,7 +191,7 @@ def main(args):
 
             avg_ll_loss.backward()
 
-            # torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
 
             optimizer.step()
 
@@ -250,8 +253,10 @@ def main(args):
     model.load_state_dict(torch.load(args.save_path))
     with torch.no_grad():
         acc = model.test_supervised(test_vec, test_tag_ids)
+        m1, vm, oneone = model.test_unsupervised(test_vec, test_tag_ids)
         print('\nTEST: *****epoch {}, iter {}, acc {}*****\n'.format(
             epoch, train_iter, acc))
+        print("\nTEST: M1 {}, VM {}, one-to-one {}".format(m1, vm, oneone))
 
 if __name__ == '__main__':
     parse_args = init_config()

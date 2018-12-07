@@ -166,11 +166,11 @@ class MarkovFlow(nn.Module):
             Tensor1: negative log likelihood, shape ([])
             Tensor2: jacobian loss, shape ([])
 
-        """      
+        """
 
         sent_len, batch_size, _ = sents.size()
 
-        # (sent_length, batch_size, num_dims) 
+        # (sent_length, batch_size, num_dims)
         sents, jacobian_loss = self.transform(sents)
 
         # ()
@@ -178,9 +178,9 @@ class MarkovFlow(nn.Module):
 
         # (1, 1, num_state, num_dims)
         means = self.means.view(1, 1, self.num_state, self.num_dims)
-        means = means.expand(sent_len, batch_size, 
+        means = means.expand(sent_len, batch_size,
             self.num_state, self.num_dims)
-        tag_id = tags.view(*tags.size(), 1, 1).expand(sent_len, 
+        tag_id = tags.view(*tags.size(), 1, 1).expand(sent_len,
             batch_size, 1, self.num_dims)
 
         # (sent_len, batch_size, num_dims)
@@ -202,7 +202,7 @@ class MarkovFlow(nn.Module):
             sent_len, batch_size, *log_trans.size())
 
         # (sent_len-1, batch_size, 1, num_state)
-        tag_id = tags.view(*tags.size(), 1, 1).expand(sent_len, 
+        tag_id = tags.view(*tags.size(), 1, 1).expand(sent_len,
             batch_size, 1, self.num_state)[:-1]
 
         # (sent_len-1, batch_size, 1, num_state)
@@ -212,7 +212,7 @@ class MarkovFlow(nn.Module):
         tag_id = tags.view(*tags.size(), 1, 1)[1:]
 
         # (sent_len-1, batch_size)
-        log_trans_prob = torch.gather(log_trans_prob, dim=3, 
+        log_trans_prob = torch.gather(log_trans_prob, dim=3,
             index=tag_id).squeeze()
 
         log_trans_prob = torch.mul(masks[1:], log_trans_prob)
@@ -221,12 +221,12 @@ class MarkovFlow(nn.Module):
         tag_id = tags[0].unsqueeze(dim=1)
 
         # (batch_size)
-        log_trans_prior = torch.gather(log_trans_prior, dim=1, 
+        log_trans_prior = torch.gather(log_trans_prior, dim=1,
             index=tag_id).sum()
 
         log_trans_prob = log_trans_prior + log_trans_prob.sum()
 
-        return -(log_trans_prob + log_emission_prob), jacobian_loss    
+        return -(log_trans_prob + log_emission_prob), jacobian_loss
 
 
     def _calc_alpha(self, sents, masks):
@@ -362,7 +362,7 @@ class MarkovFlow(nn.Module):
     def test_supervised(self,
                         test_data,
                         test_tags):
-        """Evaluate tagging performance with 
+        """Evaluate tagging performance with
         token-level supervised accuracy
 
         Args:
@@ -444,13 +444,16 @@ class MarkovFlow(nn.Module):
         gold_vm = []
         model_vm = []
 
+        for i in range(self.num_state):
+            cnt_stats[i] = Counter()
+
         for sents, tags in data_iter(list(zip(test_data, test_tags)),
                                      batch_size=self.args.batch_size,
                                      label=True,
                                      shuffle=False):
             total += sum(len(sent) for sent in sents)
             sents_t, tags_t, masks = to_input_tensor(sents,
-                                                     tag,
+                                                     tags,
                                                      pad,
                                                      device=self.device)
             sents_t, _ = self.transform(sents_t)
@@ -467,8 +470,6 @@ class MarkovFlow(nn.Module):
                     model_tag = model_tag.item()
                     gold_vm += [gold_tag]
                     model_vm += [model_tag]
-                    if model_tag not in cnt_stats:
-                        cnt_stats[model_tag] = Counter()
                     cnt_stats[model_tag][gold_tag] += 1
 
         # evaluate one-to-one accuracy
@@ -482,15 +483,16 @@ class MarkovFlow(nn.Module):
             for (gold_tag, model_tag) in zip(seq_gold_tags, seq_model_tags):
                 model_tag = model_tag.item()
                 if col_ind[gold_tag] == model_tag:
-                    correct += 1 
+                    correct += 1
 
         one2one = correct / total
 
-        correct 0.       
+        correct = 0.
 
         # match
         for tag in cnt_stats:
-            match_dict[tag] = cnt_stats[tag].most_common(1)[0][0]
+            if len(cnt_stats[tag]) != 0:
+                match_dict[tag] = cnt_stats[tag].most_common(1)[0][0]
 
         # eval many2one
         for (seq_gold_tags, seq_model_tags) in zip(eval_tags, index_all):
