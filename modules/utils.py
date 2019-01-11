@@ -5,7 +5,6 @@ from collections import defaultdict
 from io import open
 
 import torch
-from conllu import parse_incr
 
 def word2id(sentences):
     """map words to word ids
@@ -67,19 +66,23 @@ def sents_to_tagid(sentences, dict_=None):
 def read_conll(fname):
     text = []
     tags = []
+    heads = []
     fin = open(fname, "r", encoding="utf-8")
     data_file = parse_incr(fin)
     for sent in data_file:
         sent_list = []
         tag_list = []
+        head_list = []
         for token in sent:
             sent_list.append(token["form"])
             tag_list.append(token["upostag"])
+            head_list.append(token["head"])
 
         text.append(sent_list)
         tags.append(tag_list)
+        heads.append(head_list)
 
-    return text, tags
+    return text, tags, heads
 
 def read_tag_map(fname):
     tag_map = {}

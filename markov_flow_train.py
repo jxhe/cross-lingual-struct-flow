@@ -60,7 +60,7 @@ def init_config():
 
     # load config file into args
     config_file = "config.config_{}".format(args.lang)
-    params = importlib.import_module(config_file).params
+    params = importlib.import_module(config_file).params_markov
     args = argparse.Namespace(**vars(args), **params)
 
     # if args.tag_from != '':
@@ -75,7 +75,7 @@ def init_config():
         torch.manual_seed(args.seed)
         if args.cuda:
             torch.cuda.manual_seed(args.seed)
-        np.random.seed(args.seed * 13 / 7)
+        np.random.seed(args.seed)
 
     print(args)
 
@@ -87,9 +87,9 @@ def main(args):
     word_vec_dict.apply_transform(args.align_file)
     print('complete loading word vectors')
 
-    train_text, train_tags = read_conll(args.train_file)
-    val_text, val_tags = read_conll(args.val_file)
-    test_text, test_tags = read_conll(args.test_file)
+    train_text, train_tags, _ = read_conll(args.train_file)
+    val_text, val_tags, _ = read_conll(args.val_file)
+    test_text, test_tags, _ = read_conll(args.test_file)
 
     train_vec = sents_to_vec(word_vec_dict, train_text)
     val_vec = sents_to_vec(word_vec_dict, val_text)
