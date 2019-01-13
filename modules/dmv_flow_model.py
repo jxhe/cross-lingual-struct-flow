@@ -37,10 +37,9 @@ def log_softmax(input, dim):
 
 
 class DMVFlow(nn.Module):
-    def __init__(self, args, ids, num_dims):
+    def __init__(self, args, num_dims):
         super(DMVFlow, self).__init__()
 
-        self.ids = ids
         self.num_state = len(ids)
         self.num_dims = num_dims
         self.args = args
@@ -59,8 +58,8 @@ class DMVFlow(nn.Module):
 
 
         # Gaussian Variance
-        self.var = torch.zeros(num_dims, dtype=torch.float32,
-            device=self.device, requires_grad=False)
+        self.var = Parameter(torch.zeros(num_dims, dtype=torch.float32))
+        self.var.requires_grad = False
 
         # dim0 is head and dim1 is dependent
         self.attach_left = Parameter(torch.Tensor(self.num_state, self.num_state))
@@ -74,13 +73,16 @@ class DMVFlow(nn.Module):
 
         self.root_attach_left = Parameter(torch.Tensor(self.num_state))
 
-    def init_params(self, init_seed, train_tagid, train_emb):
+    def init_params(self, init_seed, train_data):
         """
         init_seed:(sents, masks)
         sents: (seq_length, batch_size, features)
         masks: (seq_length, batch_size)
 
         """
+
+        if self.args.load_nice != '':
+            
 
         # init transition params
         self.attach_left.uniform_().add_(0.01)
@@ -98,7 +100,8 @@ class DMVFlow(nn.Module):
         self.stop_left[1, :, 1].uniform_().add_(1)
 
         # initialize mean and variance with empirical values
-        sents, masks = init_seed
+        sents = init_seed.embed
+        masks = init_seed.mask
         sents, _ = self.transform(sents)
         features = sents.size(-1)
         flat_sents = sents.view(-1, features)
@@ -109,55 +112,25 @@ class DMVFlow(nn.Module):
                              dim=0) / masks.sum()
 
         self.var.copy_(seed_var)
-        self.init_mean(train_tagid, train_emb)
-
-        load_model = pickle.load(open(self.args.load_viterbi_dmv, 'rb'))
-        for i in range(self.num_state):
-            for j in range(self.num_state):
-                self.attach_left[i, j] = load_model.tita.val(
-                                              ('attach_left', self.ids[j], self.ids[i]))
-
-                self.attach_right[i, j] = load_model.tita.val(
-                                               ('attach_right', self.ids[j], self.ids[i]))
-
-            self.stop_left[1, i, 0] = load_model.tita \
-                                           .val(('stop_left', self.ids[i], 0))
-            self.stop_left[0, i, 0] = stable_math_log(1.0 - math.exp(load_model.tita \
-                                           .val(('stop_left', self.ids[i], 0))))
-            self.stop_left[1, i, 1] = load_model.tita \
-                                           .val(('stop_left', self.ids[i], 1))
-            self.stop_left[0, i, 1] = stable_math_log(1.0 - math.exp(load_model.tita \
-                                           .val(('stop_left', self.ids[i], 1))))
-            self.stop_right[1, i, 0] = load_model.tita \
-                                           .val(('stop_right', self.ids[i], 0))
-            self.stop_right[0, i, 0] = stable_math_log(1.0 - math.exp(load_model.tita \
-                                           .val(('stop_right', self.ids[i], 0))))
-            self.stop_right[1, i, 1] = load_model.tita \
-                                           .val(('stop_right', self.ids[i], 1))
-            self.stop_right[0, i, 1] = stable_math_log(1 - math.exp(load_model.tita \
-                                           .val(('stop_right', self.ids[i], 1))))
-            self.root_attach_left[i] = load_model.tita \
-                                            .val(('attach_left', self.ids[i], 'END'))
+        self.init_mean(train_data)
 
     def init_mean(self, train_tagid, train_emb):
         pad = np.zeros(self.num_dims)
         emb_dict = {}
         cnt_dict = Counter()
-        for sents, tagid_sents in data_iter(list(zip(train_emb, train_tagid)), \
-                                           batch_size=self.args.batch_size, \
-                                           is_test=True, \
-                                           shuffle=False):
-            sents_var, masks = to_input_tensor(sents, pad, self.device)
-            sents_var, _ = self.transform(sents_var)
-            sents_var = sents_var.transpose(0, 1)
-            for tagid_sent, emb_sent in zip(tagid_sents, sents_var):
-                for tagid, emb in zip(tagid_sent, emb_sent):
+        for iter_obj in train_data.data_iter(args.batch_size):
+            sents_t, _ = self.transform(iter_obj.embed)
+            sents_t = sents_t.transpose(0, 1)
+            pos_t = iter_obj.pos.transpose(0, 1)
+            mask_t = iter_obj.mask.transpose(0, 1)
+            for tagid_s, emb_s, mask_s in zip(sents_t, pos_t, mask_t):
+                for tagid, emb, mask in zip(tagid_s, emb_s, mask_s):
                     if tagid in emb_dict:
-                        emb_dict[tagid] = emb_dict[tagid] + emb
+                        emb_dict[tagid] = emb_dict[tagid] + emb * mask
                     else:
                         emb_dict[tagid] = emb
 
-                    cnt_dict[tagid] += 1
+                    cnt_dict[tagid] += mask
 
         for i in range(self.num_state):
             self.means[i] = emb_dict[i] / cnt_dict[i]
@@ -229,7 +202,7 @@ class DMVFlow(nn.Module):
 
         return res
 
-    def test(self, gold, test_emb, length, eval_all=False):
+    def test(self, test_data, batch_size=30):
         """
         Args:
             gold: A nested list of heads
@@ -243,31 +216,20 @@ class DMVFlow(nn.Module):
 
         batch_id_ = 0
 
-        if eval_all:
-            batch_size = 10
-        else:
-            batch_size = self.args.batch_size
+        for iter_obj in test_data.data_iter(batch_size=batch_size,
+                                            shuffle=False):
 
-        for sents, gold_batch in data_iter(list(zip(test_emb, gold)),
-                                           batch_size=batch_size,
-                                           is_test=True,
-                                           shuffle=False):
-
-            if eval_all and batch_id_ % 10 == 0:
-                print('batch %d' % batch_id_)
-                print('total length: %d' % cnt)
-                print('correct directed: %d' % dir_cnt)
             batch_id_ += 1
             try:
-                sents_var, masks = to_input_tensor(sents, pad, self.device)
-                sents_var, _ = self.transform(sents_var)
-                sents_var = sents_var.transpose(0, 1)
+                sents_t, _ = self.transform(iter_obj.embed)
+                sents_t = sents_t.transpose(0, 1)
+                masks = iter_obj.mask
                 # root_max_index: (batch_size, num_state, seq_length)
-                batch_size, seq_length, _ = sents_var.size()
+                batch_size, seq_length, _ = sents_t.size()
                 symbol_index_t = self.attach_left.new([[[p, q] for q in range(seq_length)] \
                                                       for p in range(self.num_state)]) \
                                                       .expand(batch_size, self.num_state, seq_length, 2)
-                root_max_index = self.dep_parse(sents_var, masks, symbol_index_t)
+                root_max_index = self.dep_parse(sents_t, masks, symbol_index_t)
                 batch_size = masks.size(1)
                 sent_len = [torch.sum(masks[:, i]).item() for i in range(batch_size)]
                 parse = self.tree_to_depset(root_max_index, sent_len)
@@ -276,42 +238,31 @@ class DMVFlow(nn.Module):
                 print('batch %d out of memory' % batch_id_)
                 continue
 
-            for gold_s, parse_s in zip(gold_batch, parse):
-                assert len(gold_s) == len(parse_s)
-                length = len(gold_s)
-                if len(gold_s) > 1:
-                    (directed, undirected) = self.measures(gold_s, parse_s)
+            for gold_s, parse_s in zip(iter_obj.head.transpose(0, 1), parse):
+                length = len(parse_s)
+                if length > 1:
+                    directed = self.measures(gold_s, parse_s)
                     cnt += length
                     dir_cnt += directed
-                    undir_cnt += undirected
 
         dir_acu = dir_cnt / cnt
-        undir_acu = undir_cnt / cnt
 
         self.log_p_parse = {}
         self.left_child = {}
         self.right_child = {}
 
-        if eval_all:
-            print('%d batches out of memory' % memory_sent_cnt)
-
-        return (dir_acu, undir_acu)
+        return dir_acu
 
     @staticmethod
     def measures(gold_s, parse_s):
         # Helper for eval().
-        (d, u) = (0, 0)
-        for (a, b) in gold_s:
-            (a, b) = (a-1, b-1)
-            b1 = (a, b) in parse_s
-            b2 = (b, a) in parse_s
-            if b1:
-                d += 1.0
-                u += 1.0
-            if b2:
-                u += 1.0
+        d = 0.
+        for head, tuple_ in zip(gold_s, parse_s):
+            if head == tuple_[1]:
+                d += 1
 
-        return (d, u)
+
+        return d
 
 
     def _eval_log_density(self, s):
@@ -360,7 +311,7 @@ class DMVFlow(nn.Module):
         return constant - \
                0.5 * torch.sum((means - sents) ** 2 / var, dim=-1)
 
-    def supervised_loss(self, sents, pos, head, num_child, masks):
+    def supervised_loss(self, sents, iter_obj):
         """
         Args:
             sents: A tensor with size (batch_size, seq_len, features)
@@ -370,6 +321,12 @@ class DMVFlow(nn.Module):
             num_right_child: (seq_len, batch_size)
             masks: (seq_len, batch_size)
         """
+        pos = iter_obj.pos
+        head = iter_obj.head
+        num_left_child = iter_obj.l_deps
+        num_right_child = iter_obj.r_deps
+        masks = iter_obj.mask
+
         attach_left_ = log_softmax(self.attach_left, dim=1).expand(batch_size, *self.attach_left.size())
         attach_right_ = log_softmax(self.attach_right, dim=1).expand(batch_size, *self.attach_right.size())
         root_attach_ = log_softmax(self.root_attach_left, dim=0).expand(batch_size, *self.root_attach_left.size())
@@ -388,9 +345,6 @@ class DMVFlow(nn.Module):
         seq_len, batch_size = pos.size()
 
         log_emission_prob = torch.mul(density, masks).sum()
-        attach_left_ = self.attach_left.expand(batch_size, *self.attach_left.size())
-
-        log_prob = torch.zeros((), requires_grad=False, device=self.device)
 
         for i in range(seq_len):
             # 1 indicates left dependent
@@ -420,7 +374,7 @@ class DMVFlow(nn.Module):
 
             log_attach = torch.mul(log_attach, masks[i])
 
-            log_prob = log_prob + log_attach.sum()
+            log_prob = log_emission_prob + log_attach.sum()
 
             # stop prob
             # (batch_size, num_state, 1), 1 indicates no child
@@ -464,7 +418,7 @@ class DMVFlow(nn.Module):
             log_prob = log_prob + log_continue.sum()
 
 
-        return log_prob
+        return -log_prob
 
 
     def unsupervised_loss(self, sents, masks):
@@ -602,7 +556,7 @@ class DMVFlow(nn.Module):
         log_root = log_p_sum_cat + self.log_root_attach_left.view(1, self.num_state, 1) \
                    .expand_as(log_p_sum_cat)
 
-        return torch.sum(log_sum_exp(log_root.view(batch_size, -1), dim=1))
+        return -torch.sum(log_sum_exp(log_root.view(batch_size, -1), dim=1))
 
 
     def dep_parse(self, sents, masks, symbol_index_t):

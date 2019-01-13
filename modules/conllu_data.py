@@ -1,12 +1,19 @@
-from collections import defaultdict
+from collections import defaultdict, namedtuple
 from conllu import parse_incr
+
+IterObj = namedtuple("iter object", ["embed", "pos", "head", "r_deps", "l_deps", "mask"])
 
 class ConlluData(object):
     """docstring for ConlluData"""
-    def __init__(self, fname, device, exclude=[]):
+    def __init__(self, fname, embed, device, 
+                 max_len=1e3, exclude=["PUNCT", "SYM"],
+                 pos_to_id_dict=None):
         super(ConlluData, self).__init__()
         self.device = device
-        pos_to_id = defaultdict(lambda: len(pos_to_id))
+
+        if pos_to_id_dict is None:
+            pos_to_id = defaultdict(lambda: len(pos_to_id))
+            
         text = []
         tags = []
         heads = []
@@ -30,6 +37,9 @@ class ConlluData(object):
                     head_list.append(token["head"]-1)
                 else:
                     exclude_list += [token["id"]-1]
+
+            if len(tag_list) > max_len:
+                continue
 
             # recompute head id for current sequence
             head_list_copy = head_list.copy()
@@ -66,14 +76,17 @@ class ConlluData(object):
         self.id_to_pos = {v:k for (k, v) in pos_to_id.items()}
         self.length = len(self.text)
 
+        self.text_to_embed(embed)
+
+
     def __len__(self):
         return self.length
 
     def text_to_embed(self, embedding):
-        self.embeddings = []
+        self.embed = []
         for sent in self.text:
             sample = [embedding[word] for word in sent]
-            self.embeddings.append(sample)
+            self.embed.append(sample)
 
     def input_transpose(self, embed, pos, head, r_deps, l_deps):
         max_len = max(len(s) for s in pos)
@@ -103,12 +116,12 @@ class ConlluData(object):
         embed, pos, head, r_deps, l_deps, masks = input_transpose(embed, pos, head, r_deps, l_deps)
 
 
-        embed_t = torch.tensor(embed, dtype=torch.float32, requires_grad=False, device=device)
-        pos_t = torch.tensor(pos, dtype=torch.long, requires_grad=False, device=device)
-        head_t = torch.tensor(head, dtype=torch.long, requires_grad=False, device=device)
-        r_deps_t = torch.tensor(r_deps, dtype=torch.long, requires_grad=False, device=device)
-        l_deps_t = torch.tensor(l_deps, dtype=torch.long, requires_grad=False, device=device)
-        masks_t = torch.tensor(masks, dtype=torch.float32, requires_grad=False, device=device)
+        embed_t = torch.tensor(embed, dtype=torch.float32, requires_grad=False, device=self.device)
+        pos_t = torch.tensor(pos, dtype=torch.long, requires_grad=False, device=self.device)
+        head_t = torch.tensor(head, dtype=torch.long, requires_grad=False, device=self.device)
+        r_deps_t = torch.tensor(r_deps, dtype=torch.long, requires_grad=False, device=self.device)
+        l_deps_t = torch.tensor(l_deps, dtype=torch.long, requires_grad=False, device=self.device)
+        masks_t = torch.tensor(masks, dtype=torch.float32, requires_grad=False, device=self.device)
 
         return sents_t, pos_t, head_t, r_deps_t, l_deps_t, masks_t
 
@@ -131,10 +144,10 @@ class ConlluData(object):
                 batch_embed += [self.embeddings[index]]
                 batch_pos += [self.postags[index]]
                 batch_head += [self.heads[index]]
-                batch_right_num_deps += [self.right_num_deps]
-                batch_left_num_deps += [self.left_num_deps]
+                batch_right_num_deps += [self.right_num_deps[index]]
+                batch_left_num_deps += [self.left_num_deps[index]]
 
-            embed_t, pos_t, head_t, r_deps_t, l_deps_t = self.to_input_tensor(
+            embed_t, pos_t, head_t, r_deps_t, l_deps_t, masks_t = self.to_input_tensor(
                 batch_embed, batch_pos, batch_head, batch_right_num_deps, batch_left_num_deps)
 
-            yield embed_t, pos_t, head_t, r_deps_t, l_deps_t
+            yield IterObj(embed_t, pos_t, head_t, r_deps_t, l_deps_t, masks_t)

@@ -145,7 +145,7 @@ def main(args):
         return
 
     if args.opt == "adam":
-        optimizer = torch.optim.Adam(model.parameters(), lr=0.00001)
+        optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
         opt_dict["lr"] = 0.001
     elif args.opt == "sgd":
         optimizer = torch.optim.SGD(model.parameters(), lr=1.)

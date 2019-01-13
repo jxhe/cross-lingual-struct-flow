@@ -9,6 +9,7 @@ import pickle
 import torch
 import numpy as np
 
+from modules import ConlluData
 import modules.dmv_flow_model as dmv
 from modules import data_iter, \
                     read_conll, \
@@ -17,6 +18,7 @@ from modules import data_iter, \
                     to_input_tensor, \
                     generate_seed
 
+lr_decay = 0.5
 
 def init_config():
 
@@ -84,54 +86,45 @@ def main(args):
     word_vec_dict.apply_transform(args.align_file)
     print('complete loading word vectors')
 
-    train_text, train_tags, train_heads = read_conll(args.train_file)
-    val_text, val_tags, val_heads = read_conll(args.val_file)
-    test_text, test_tags, test_heads = read_conll(args.test_file)
+    device = torch.device("cuda" if args.cuda else "cpu")
+    args.device = device
 
-    train_vec = sents_to_vec(word_vec_dict, train_text)
-    val_vec = sents_to_vec(word_vec_dict, val_text)
-    test_vec = sents_to_vec(word_vec_dict, test_text)
+    if args.mode == "unsupervised":
+        train_max_len = 20
+    else:
+        train_max_len = 1e3
 
-    tag_dict = read_tag_map("tag_map.txt")
+    train_data = ConlluData(args.train_file, 
+        max_len=train_max_len, device=device)
+    val_data = ConlluData(args.val_file, device)
+    test_data = ConlluData(args.test_file, device)
 
-    train_tag_ids, _ = sents_to_tagid(train_tags, tag_dict)
-    val_tag_ids, _ = sents_to_tagid(val_tags, tag_dict)
-    test_tag_ids, _ = sents_to_tagid(test_tags, tag_dict)
-
-    num_dims = len(train_vec[0][0])
+    num_dims = len(train_data.embed[0][0])
     print('complete reading data')
 
     print("embedding dims {}".format(num_dims))
-    print("#tags {}".format(len(tag_dict)))
-    print("#train sentences: {}".format(len(train_vec)))
-    print("#dev sentences: {}".format(len(val_vec)))
-    print("#test sentences: {}".format(len(test_vec)))
+    print("#train sentences: {}".format(train_data.length))
+    print("#dev sentences: {}".format(val_data.length))
+    print("#test sentences: {}".format(test_data.length))
 
-    # train_tagid, tag2id = sents_to_tagid(train_sents)
-    # print('%d types of tags' % len(tag2id))
-    # id2tag = {v: k for k, v in tag2id.items()}
+    model = dmv.DMVFlow(args, num_dims).to(device)
 
-    # pad = np.zeros(num_dims)
-    # device = torch.device("cuda" if args.cuda else "cpu")
-    # args.device = device
-
-    model = dmv.DMVFlow(args, tag_dict, num_dims).to(device)
-
-    init_seed = to_input_tensor(generate_seed(train_vec, args.batch_size),
-                                pad, device=device)
+    init_seed = next(train_data.data_iter(args.batch_size))
 
     with torch.no_grad():
-        model.init_params(init_seed, train_tagid, train_vec)
+        model.init_params(init_seed, train_data)
     print('complete init')
 
-    if args.train_from != '':
-        model.load_state_dict(torch.load(args.train_from))
-        with torch.no_grad():
-            directed, undirected = model.test(test_deps, test_vec, verbose=False)
-        print('acc on length <= 10: #trees %d, undir %2.1f, dir %2.1f' \
-              % (len(test_gold), 100 * undirected, 100 * directed))
+    opt_dict = {"not_improved": 0, "lr": 0., "best_score": 0}
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+    if args.opt == "adam":
+        optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+        opt_dict["lr"] = 0.001
+    elif args.opt == "sgd":
+        optimizer = torch.optim.SGD(model.parameters(), lr=1.)
+        opt_dict["lr"] = 1.
+    else:
+        raise ValueError("{} is not supported".format(args.opt))
 
     log_niter = (len(train_vec)//args.batch_size)//5
     report_ll = report_num_words = report_num_sents = epoch = train_iter = 0
@@ -143,35 +136,39 @@ def main(args):
     print('begin training')
 
     with torch.no_grad():
-        directed, undirected = model.test(test_deps, test_vec)
-    print('starting acc on length <= 10: #trees %d, undir %2.1f, dir %2.1f' \
-          % (len(test_deps), 100 * undirected, 100 * directed))
+        directed = model.test(test_data)
+    print("TEST accuracy: {}".format(directed))
+
+    best_acc = 0.
 
     for epoch in range(args.epochs):
         report_ll = report_num_sents = report_num_words = 0
-        for sents in data_iter(train_vec, batch_size=args.batch_size):
-            batch_size = len(sents)
-            num_words = sum(len(sent) for sent in sents)
-            stop_num_words += num_words
+        for iter_obj in train_data.data_iter(batch_size=args.batch_size):
+            batch_size = len(iter_obj.pos)
+            num_words = iter_obj.mask.sum().item()
             optimizer.zero_grad()
 
-            sents_var, masks = to_input_tensor(sents, pad, device)
-            sents_var, _ = model.transform(sents_var)
-            sents_var = sents_var.transpose(0, 1)
-            log_likelihood = model.p_inside(sents_var, masks)
+            sents, jacobian_loss = model.transform(iter_obj.embed)
+            sents = sents.transpose(0, 1)
 
-            avg_ll_loss = -log_likelihood / batch_size
+            if args.mode == "unsupervised":
+                nll = model.unsupervised_loss(sents, iter_obj.masks)
+            elif args.mode == "supervised":
+                nll = model.supervised_loss(sents, iter_obj)
+            else:
+                raise ValueError("{} mode is not supported".format(args.mode))
+
+            avg_ll_loss = (nll + jacobian_loss) / batch_size
 
             avg_ll_loss.backward()
 
-            torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_grad)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
             optimizer.step()
 
-            report_ll += log_likelihood.item()
+            report_ll += -nll.item()
             report_num_words += num_words
             report_num_sents += batch_size
 
-            stop_avg_ll += log_likelihood.item()
 
             if train_iter % log_niter == 0:
                 print('epoch %d, iter %d, ll_per_sent %.4f, ll_per_word %.4f, ' \
@@ -181,37 +178,33 @@ def main(args):
                       model.var.data.min(), time.time() - begin_time), file=sys.stderr)
 
             train_iter += 1
-        if epoch % args.valid_nepoch == 0:
-            with torch.no_grad():
-                directed, undirected = model.test(test_deps, test_vec)
-            print('\n\nacc on length <= 10: #trees %d, undir %2.1f, dir %2.1f, \n\n' \
-                  % (len(test_deps), 100 * undirected, 100 * directed))
 
-        stop_avg_ll = stop_avg_ll / stop_num_words
-        rate = (stop_avg_ll - stop_avg_ll_last) / abs(stop_avg_ll_last)
+            if args.mode == "supervised":
+                with torch.no_grad():
+                    acc = model.test(val_data)
+                    print('\nDEV: *****epoch {}, iter {}, acc {}*****\n'.format(
+                        epoch, train_iter, acc))
 
-        print('\n\nlikelihood: %.4f, likelihood last: %.4f, rate: %f\n' % \
-                (stop_avg_ll, stop_avg_ll_last, rate))
-
-        if rate < 0.001 and epoch >= 5:
-            break
-
-        stop_avg_ll_last = stop_avg_ll
-        stop_avg_ll = stop_num_words = 0
+                if acc > opt_dict["best_score"]:
+                    opt_dict["best_score"] = acc
+                    opt_dict["not_improved"] = 0
+                    torch.save(model.state_dict(), args.save_path)
+                else:
+                    opt_dict["not_improved"] += 1
+                    if opt_dict["not_improved"] >= 5:
+                        opt_dict["best_score"] = acc
+                        opt_dict["not_improved"] = 0
+                        opt_dict["lr"] = opt_dict["lr"] * lr_decay
+                        model.load_state_dict(torch.load(args.save_path))
+                        print("new lr: {}".format(opt_dict["lr"]))
+                        if args.opt == "adam":
+                            optimizer = torch.optim.Adam(model.parameters(), lr=opt_dict["lr"])
+                        elif args.opt == "sgd":
+                            optimizer = torch.optim.SGD(model.parameters(), lr=opt_dict["lr"])
+            else:
+                torch.save(model.state_dict(), args.save_path)
 
     torch.save(model.state_dict(), args.save_path)
-
-    # eval on all lengths
-    if args.eval_all:
-        test_sents, _ = read_conll(args.test_file)
-        test_deps = [sent["head"] for sent in test_sents]
-        test_vec = sents_to_vec(word_vec, test_sents)
-        print("start evaluating on all lengths")
-        with torch.no_grad():
-            directed, undirected = model.test(test_deps, test_vec, eval_all=True)
-        print('accuracy on all lengths: number of trees:%d, undir: %2.1f, dir: %2.1f' \
-              % (len(test_gold), 100 * undirected, 100 * directed))
-
 
 if __name__ == '__main__':
     parse_args = init_config()
