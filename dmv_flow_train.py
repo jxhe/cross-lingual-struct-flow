@@ -5,6 +5,7 @@ import argparse
 import time
 import sys
 import pickle
+import importlib
 
 import torch
 import numpy as np
@@ -17,6 +18,8 @@ from modules import data_iter, \
                     sents_to_tagid, \
                     to_input_tensor, \
                     generate_seed
+
+from multilingual_trans.fasttext import FastVector
 
 lr_decay = 0.5
 
@@ -92,22 +95,28 @@ def main(args):
     if args.mode == "unsupervised":
         train_max_len = 20
     else:
-        train_max_len = 1e3
+        train_max_len = 20
 
-    train_data = ConlluData(args.train_file, 
-        max_len=train_max_len, device=device)
-    val_data = ConlluData(args.val_file, device)
-    test_data = ConlluData(args.test_file, device)
+    train_data = ConlluData(args.train_file, word_vec_dict,
+            max_len=train_max_len, device=device)
+    pos_to_id = train_data.pos_to_id
+
+    val_data = ConlluData(args.val_file, word_vec_dict,
+            max_len=20, device=device, pos_to_id_dict=pos_to_id)
+    test_data = ConlluData(args.test_file, word_vec_dict,
+            max_len=20, device=device, pos_to_id_dict=pos_to_id)
 
     num_dims = len(train_data.embed[0][0])
     print('complete reading data')
 
     print("embedding dims {}".format(num_dims))
+    print("{} pos tags".format(len(pos_to_id)))
     print("#train sentences: {}".format(train_data.length))
     print("#dev sentences: {}".format(val_data.length))
     print("#test sentences: {}".format(test_data.length))
 
-    model = dmv.DMVFlow(args, num_dims).to(device)
+    exclude_pos = [pos_to_id["PUNCT"], pos_to_id["SYM"]]
+    model = dmv.DMVFlow(args, len(pos_to_id), num_dims, exclude_pos).to(device)
 
     init_seed = next(train_data.data_iter(args.batch_size))
 
@@ -126,7 +135,7 @@ def main(args):
     else:
         raise ValueError("{} is not supported".format(args.opt))
 
-    log_niter = (len(train_vec)//args.batch_size)//5
+    log_niter = (train_data.length//args.batch_size)//5
     report_ll = report_num_words = report_num_sents = epoch = train_iter = 0
     stop_avg_ll = stop_num_words = 0
     stop_avg_ll_last = 1
@@ -135,9 +144,9 @@ def main(args):
 
     print('begin training')
 
-    with torch.no_grad():
-        directed = model.test(test_data)
-    print("TEST accuracy: {}".format(directed))
+    # with torch.no_grad():
+    #     directed = model.test(test_data)
+    # print("TEST accuracy: {}".format(directed))
 
     best_acc = 0.
 
@@ -179,30 +188,30 @@ def main(args):
 
             train_iter += 1
 
-            if args.mode == "supervised":
-                with torch.no_grad():
-                    acc = model.test(val_data)
-                    print('\nDEV: *****epoch {}, iter {}, acc {}*****\n'.format(
-                        epoch, train_iter, acc))
+        if args.mode == "supervised":
+            with torch.no_grad():
+                acc = model.test(val_data)
+                print('\nDEV: *****epoch {}, iter {}, acc {}*****\n'.format(
+                    epoch, train_iter, acc))
 
-                if acc > opt_dict["best_score"]:
+            if acc > opt_dict["best_score"]:
+                opt_dict["best_score"] = acc
+                opt_dict["not_improved"] = 0
+                torch.save(model.state_dict(), args.save_path)
+            else:
+                opt_dict["not_improved"] += 1
+                if opt_dict["not_improved"] >= 5:
                     opt_dict["best_score"] = acc
                     opt_dict["not_improved"] = 0
-                    torch.save(model.state_dict(), args.save_path)
-                else:
-                    opt_dict["not_improved"] += 1
-                    if opt_dict["not_improved"] >= 5:
-                        opt_dict["best_score"] = acc
-                        opt_dict["not_improved"] = 0
-                        opt_dict["lr"] = opt_dict["lr"] * lr_decay
-                        model.load_state_dict(torch.load(args.save_path))
-                        print("new lr: {}".format(opt_dict["lr"]))
-                        if args.opt == "adam":
-                            optimizer = torch.optim.Adam(model.parameters(), lr=opt_dict["lr"])
-                        elif args.opt == "sgd":
-                            optimizer = torch.optim.SGD(model.parameters(), lr=opt_dict["lr"])
-            else:
-                torch.save(model.state_dict(), args.save_path)
+                    opt_dict["lr"] = opt_dict["lr"] * lr_decay
+                    model.load_state_dict(torch.load(args.save_path))
+                    print("new lr: {}".format(opt_dict["lr"]))
+                    if args.opt == "adam":
+                        optimizer = torch.optim.Adam(model.parameters(), lr=opt_dict["lr"])
+                    elif args.opt == "sgd":
+                        optimizer = torch.optim.SGD(model.parameters(), lr=opt_dict["lr"])
+        else:
+            torch.save(model.state_dict(), args.save_path)
 
     torch.save(model.state_dict(), args.save_path)
 

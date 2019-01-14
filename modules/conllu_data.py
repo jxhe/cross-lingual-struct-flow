@@ -1,19 +1,22 @@
+import numpy as np
+import torch
 from collections import defaultdict, namedtuple
 from conllu import parse_incr
 
-IterObj = namedtuple("iter object", ["embed", "pos", "head", "r_deps", "l_deps", "mask"])
+IterObj = namedtuple("iter_object", ["embed", "pos", "head", "r_deps", "l_deps", "mask"])
 
 class ConlluData(object):
     """docstring for ConlluData"""
-    def __init__(self, fname, embed, device, 
-                 max_len=1e3, exclude=["PUNCT", "SYM"],
-                 pos_to_id_dict=None):
+    def __init__(self, fname, embed, device,
+                 max_len=1e3, pos_to_id_dict=None):
         super(ConlluData, self).__init__()
         self.device = device
 
         if pos_to_id_dict is None:
             pos_to_id = defaultdict(lambda: len(pos_to_id))
-            
+        else:
+            pos_to_id = pos_to_id_dict
+
         text = []
         tags = []
         heads = []
@@ -25,29 +28,24 @@ class ConlluData(object):
             sent_list = []
             tag_list = []
             head_list = []
-            exclude_list = []
             right_num_deps_ = []
             left_num_deps_ = []
+            sent_n = []
+
+            # delete multi-word token
             for token in sent:
-                if token["upostag"] not in exclude:
-                    sent_list.append(token["form"])
-                    pos_id = pos_to_id[token["upostag"]] if token["upostag"] != '_' else pos_to_id["X"]
-                    tag_list.append(pos_id)
-                    # -1 represents root
-                    head_list.append(token["head"]-1)
-                else:
-                    exclude_list += [token["id"]-1]
+                if isinstance(token["id"], int):
+                    sent_n += [token]
+
+            for token in sent_n:
+                sent_list.append(token["form"])
+                pos_id = pos_to_id[token["upostag"]] if token["upostag"] != '_' else pos_to_id["X"]
+                tag_list.append(pos_id)
+                # -1 represents root
+                head_list.append(token["head"]-1)
 
             if len(tag_list) > max_len:
                 continue
-
-            # recompute head id for current sequence
-            head_list_copy = head_list.copy()
-            for exclude_id in exclude_list:
-                for i, head_id in enumerate(head_list_copy):
-                    assert(head_id != exclude_id)
-                    if exclude_id < head_id:
-                        head_list[i] -= 1
 
             right_num_deps_ = [0] * len(head_list)
             left_num_deps_ = [0] * len(head_list)
@@ -66,7 +64,7 @@ class ConlluData(object):
             heads.append(head_list)
             right_num_deps.append(right_num_deps_)
             left_num_deps.append(left_num_deps_)
-            
+
         self.text = text
         self.postags = tags
         self.heads = heads
@@ -113,7 +111,7 @@ class ConlluData(object):
         return a tensor of shape (src_sent_len, batch_size)
         """
 
-        embed, pos, head, r_deps, l_deps, masks = input_transpose(embed, pos, head, r_deps, l_deps)
+        embed, pos, head, r_deps, l_deps, masks = self.input_transpose(embed, pos, head, r_deps, l_deps)
 
 
         embed_t = torch.tensor(embed, dtype=torch.float32, requires_grad=False, device=self.device)
@@ -123,7 +121,7 @@ class ConlluData(object):
         l_deps_t = torch.tensor(l_deps, dtype=torch.long, requires_grad=False, device=self.device)
         masks_t = torch.tensor(masks, dtype=torch.float32, requires_grad=False, device=self.device)
 
-        return sents_t, pos_t, head_t, r_deps_t, l_deps_t, masks_t
+        return embed_t, pos_t, head_t, r_deps_t, l_deps_t, masks_t
 
     def data_iter(self, batch_size, shuffle=True):
         index_arr = np.arange(self.length)
@@ -132,7 +130,7 @@ class ConlluData(object):
         if shuffle:
             np.random.shuffle(index_arr)
 
-        batch_num = int(np.ceil(len(data) / float(batch_size)))
+        batch_num = int(self.length / float(batch_size))
         for i in range(batch_num):
             batch_ids = index_arr[i * batch_size: (i + 1) * batch_size]
             batch_embed = []
@@ -141,7 +139,7 @@ class ConlluData(object):
             batch_right_num_deps = []
             batch_left_num_deps = []
             for index in batch_ids:
-                batch_embed += [self.embeddings[index]]
+                batch_embed += [self.embed[index]]
                 batch_pos += [self.postags[index]]
                 batch_head += [self.heads[index]]
                 batch_right_num_deps += [self.right_num_deps[index]]

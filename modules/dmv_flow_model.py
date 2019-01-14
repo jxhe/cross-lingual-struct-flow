@@ -37,13 +37,17 @@ def log_softmax(input, dim):
 
 
 class DMVFlow(nn.Module):
-    def __init__(self, args, num_dims):
+    def __init__(self, args, num_state, num_dims, punc_sym):
         super(DMVFlow, self).__init__()
 
-        self.num_state = len(ids)
+        self.num_state = num_state
         self.num_dims = num_dims
         self.args = args
         self.device = args.device
+
+        self.hidden_units = num_dims // 2
+
+        self.punc_sym = punc_sym
 
         self.harmonic = False
 
@@ -52,7 +56,7 @@ class DMVFlow(nn.Module):
         if args.model == 'nice':
             self.nice_layer = NICETrans(self.args.couple_layers,
                                         self.args.cell_layers,
-                                        self.args.hidden_units,
+                                        self.hidden_units,
                                         self.num_dims,
                                         self.device)
 
@@ -82,7 +86,12 @@ class DMVFlow(nn.Module):
         """
 
         if self.args.load_nice != '':
-            
+            self.load_state_dict(torch.load(self.args.load_nice), strict=False)
+            return
+
+        if self.args.load_gaussian != '':
+            self.load_state_dict(torch.load(self.args.load_gaussian), strict=False)
+            return
 
         # init transition params
         self.attach_left.uniform_().add_(0.01)
@@ -114,17 +123,19 @@ class DMVFlow(nn.Module):
         self.var.copy_(seed_var)
         self.init_mean(train_data)
 
-    def init_mean(self, train_tagid, train_emb):
+    def init_mean(self, train_data):
         pad = np.zeros(self.num_dims)
         emb_dict = {}
         cnt_dict = Counter()
-        for iter_obj in train_data.data_iter(args.batch_size):
+        for iter_obj in train_data.data_iter(self.args.batch_size):
             sents_t, _ = self.transform(iter_obj.embed)
             sents_t = sents_t.transpose(0, 1)
             pos_t = iter_obj.pos.transpose(0, 1)
             mask_t = iter_obj.mask.transpose(0, 1)
-            for tagid_s, emb_s, mask_s in zip(sents_t, pos_t, mask_t):
+            for emb_s, tagid_s, mask_s in zip(sents_t, pos_t, mask_t):
                 for tagid, emb, mask in zip(tagid_s, emb_s, mask_s):
+                    tagid = tagid.item()
+                    mask = mask.item()
                     if tagid in emb_dict:
                         emb_dict[tagid] = emb_dict[tagid] + emb * mask
                     else:
@@ -202,7 +213,7 @@ class DMVFlow(nn.Module):
 
         return res
 
-    def test(self, test_data, batch_size=30):
+    def test(self, test_data, batch_size=20):
         """
         Args:
             gold: A nested list of heads
@@ -238,12 +249,11 @@ class DMVFlow(nn.Module):
                 print('batch %d out of memory' % batch_id_)
                 continue
 
-            for gold_s, parse_s in zip(iter_obj.head.transpose(0, 1), parse):
-                length = len(parse_s)
-                if length > 1:
-                    directed = self.measures(gold_s, parse_s)
-                    cnt += length
-                    dir_cnt += directed
+            for pos_s, gold_s, parse_s in zip(iter_obj.pos.transpose(0, 1),
+                    iter_obj.head.transpose(0, 1), parse):
+                directed, length = self.measures(pos_s, gold_s, parse_s)
+                cnt += length
+                dir_cnt += directed
 
         dir_acu = dir_cnt / cnt
 
@@ -253,16 +263,17 @@ class DMVFlow(nn.Module):
 
         return dir_acu
 
-    @staticmethod
-    def measures(gold_s, parse_s):
+    def measures(self, pos_s, gold_s, parse_s):
         # Helper for eval().
         d = 0.
-        for head, tuple_ in zip(gold_s, parse_s):
-            if head == tuple_[1]:
-                d += 1
+        l = 0.
+        for pos, head, tuple_ in zip(pos_s, gold_s, parse_s):
+            if pos.item() not in self.punc_sym:
+                l += 1
+                if head.item() == tuple_[1]:
+                    d += 1
 
-
-        return d
+        return d, l
 
 
     def _eval_log_density(self, s):
@@ -304,7 +315,7 @@ class DMVFlow(nn.Module):
         tag_id = pos.view(*pos.size(), 1, 1).expand(batch_size,
             seq_length, 1, self.num_dims)
 
-        # (sent_len, batch_size, num_dims)
+        # (batch_size, seq_len, num_dims)
         means = torch.gather(means, dim=2, index=tag_id).squeeze(2)
 
         var = self.var.view(1, 1, self.num_dims)
@@ -312,6 +323,7 @@ class DMVFlow(nn.Module):
                0.5 * torch.sum((means - sents) ** 2 / var, dim=-1)
 
     def supervised_loss(self, sents, iter_obj):
+
         """
         Args:
             sents: A tensor with size (batch_size, seq_len, features)
@@ -326,6 +338,8 @@ class DMVFlow(nn.Module):
         num_left_child = iter_obj.l_deps
         num_right_child = iter_obj.r_deps
         masks = iter_obj.mask
+
+        seq_len, batch_size = pos.size()
 
         attach_left_ = log_softmax(self.attach_left, dim=1).expand(batch_size, *self.attach_left.size())
         attach_right_ = log_softmax(self.attach_right, dim=1).expand(batch_size, *self.attach_right.size())
@@ -342,9 +356,8 @@ class DMVFlow(nn.Module):
         # (batch_size, seq_len)
         pos_t = pos.transpose(0, 1)
         density = self._eval_log_density_supervised(sents, pos_t)
-        seq_len, batch_size = pos.size()
 
-        log_emission_prob = torch.mul(density, masks).sum()
+        log_emission_prob = torch.mul(density, masks.transpose(0, 1)).sum()
 
         for i in range(seq_len):
             # 1 indicates left dependent
@@ -353,10 +366,13 @@ class DMVFlow(nn.Module):
             # (batch_size, 1)
             pos_sub = pos[i].unsqueeze(1)
 
+
+            head_mask = (head[i] >= 0).long()
+            head_index = torch.mul(head_mask, head[i])
             # (batch_size, 1, num_state)
-            head_pos_sub = torch.gather(pos, index=head[i].unsqueeze(0), dim=0).squeeze(0) \
+            head_pos_sub = torch.gather(pos, index=head_index.unsqueeze(0), dim=0).squeeze(0) \
                                 .view(batch_size, 1, 1).expand(batch_size, 1, self.num_state)
-            
+
             # attach prob
             # (batch_size, num_state) --> (batch_size)
             log_attach_left_prob = torch.gather(attach_left_, index=head_pos_sub, dim=1).squeeze(1)
@@ -365,11 +381,13 @@ class DMVFlow(nn.Module):
             log_attach_right_prob = torch.gather(attach_right_, index=head_pos_sub, dim=1).squeeze(1)
             log_attach_right_prob = torch.gather(log_attach_right_prob, index=pos_sub, dim=1).squeeze(1)
 
-            log_attach = torch.mul(dir_left, log_attach_left_prob) + torch.mul(1.0 - dir_left, log_attach_left_prob) 
+            log_attach = torch.mul(dir_left, log_attach_left_prob) + torch.mul(1.0 - dir_left, log_attach_left_prob)
+
+            log_attach = torch.mul(log_attach, head_mask.float())
 
             # 1 indicates root
-            dir_root = (pos_sub == -1).float()
-            log_root_prob = torch.gather(root_attach_, index=pos_sub_, dim=1).squeeze(1)
+            dir_root = (head[i] == -1).float()
+            log_root_prob = torch.gather(root_attach_, index=pos_sub, dim=1).squeeze(1)
             log_attach = log_attach + torch.mul(dir_root, log_root_prob)
 
             log_attach = torch.mul(log_attach, masks[i])
@@ -378,14 +396,14 @@ class DMVFlow(nn.Module):
 
             # stop prob
             # (batch_size, num_state, 1), 1 indicates no child
-            stop_adj_left = (num_left_child[i] == 0).view(batch_size, 1, 1).expand(batch_size, self.num_state, 1)
-            stop_adj_right = (num_right_child[i] == 0).view(batch_size, 1, 1).expand(batch_size, self.num_state, 1)
+            stop_adj_left = (num_left_child[i] == 0).long().view(batch_size, 1, 1).expand(batch_size, self.num_state, 1)
+            stop_adj_right = (num_right_child[i] == 0).long().view(batch_size, 1, 1).expand(batch_size, self.num_state, 1)
 
             # (batch_size, num_state) --> (batch_size)
-            log_stop_right_prob = torch.gather(stop_right_, index=stop_adj_right, dim=2)
-            log_stop_right_prob = torch.gather(log_stop_right_prob, index=pos_sub, dim=1)
-            log_stop_left_prob = torch.gather(stop_left_, index=stop_adj_left, dim=2)
-            log_stop_left_prob = torch.gather(log_stop_left_prob, index=pos_sub, dim=1)
+            log_stop_right_prob = torch.gather(stop_right_, index=stop_adj_right, dim=2).squeeze(2)
+            log_stop_right_prob = torch.gather(log_stop_right_prob, index=pos_sub, dim=1).squeeze(1)
+            log_stop_left_prob = torch.gather(stop_left_, index=stop_adj_left, dim=2).squeeze(2)
+            log_stop_left_prob = torch.gather(log_stop_left_prob, index=pos_sub, dim=1).squeeze(1)
 
             log_stop = torch.mul(log_stop_right_prob + log_stop_left_prob, masks[i])
 
@@ -395,8 +413,8 @@ class DMVFlow(nn.Module):
             pos_sub_ = pos_sub.unsqueeze(2).expand(batch_size, 1, 2)
 
             # (batch_size, 2)
-            continue_right_sub = torch.gather(continue_right_, index=pos_sub_, dim=1)
-            continue_left_sub = torch.gather(continue_left_, index=pos_sub_, dim=1)
+            continue_right_sub = torch.gather(continue_right_, index=pos_sub_, dim=1).squeeze(1)
+            continue_left_sub = torch.gather(continue_left_, index=pos_sub_, dim=1).squeeze(1)
 
             # (batch_size)
             continue_flag_left = (num_left_child[i] > 0)
@@ -405,13 +423,13 @@ class DMVFlow(nn.Module):
             continue_flag_left = continue_flag_left.float()
             continue_flag_right = continue_flag_right.float()
 
-            log_continue_right_prob = torch.mul(continue_right_sub[:,1], continue_flag_right) 
+            log_continue_right_prob = torch.mul(continue_right_sub[:,1], continue_flag_right)
             log_continue_left_prob = torch.mul(continue_left_sub[:,1], continue_flag_left)
 
             log_continue_right_prob = log_continue_right_prob + \
-                torch.mul(continue_flag_right, torch.mul((num_right_child[i]-1).float(), continue_right_[:,0]))
+                torch.mul(continue_flag_right, torch.mul((num_right_child[i]-1).float(), continue_right_sub[:,0]))
             log_continue_left_prob = log_continue_left_prob + \
-                torch.mul(continue_flag_left, torch.mul((num_left_child[i]-1).float(), continue_left_[:,0]))
+                torch.mul(continue_flag_left, torch.mul((num_left_child[i]-1).float(), continue_left_sub[:,0]))
 
             log_continue = torch.mul(log_continue_left_prob + log_continue_right_prob, masks[i])
 
@@ -475,7 +493,7 @@ class DMVFlow(nn.Module):
                 j = i + l
                 log_p1 = []
                 log_p2 = []
-                index = torch.zeros((seq_length, j-i-1), dtype=torch.long, 
+                index = torch.zeros((seq_length, j-i-1), dtype=torch.long,
                     device=self.device, requires_grad=False)
                 # right attachment
                 for k in range(i+1, j):
@@ -490,7 +508,7 @@ class DMVFlow(nn.Module):
 
                 # (num_state, seq_len, k)
                 log_stop_right_gather = torch.gather(
-                    log_stop_right.unsqueeze(-1).expand(*log_stop_right.size(), j-i-1), 
+                    log_stop_right.unsqueeze(-1).expand(*log_stop_right.size(), j-i-1),
                     1, index)
 
                 # log_p_tmp[b, i, m, j, n] = log_p1[b, i, m] + log_p2[b, j, n] + stop_right[0, i, m==k-1]
@@ -512,7 +530,7 @@ class DMVFlow(nn.Module):
                 # left attachment
                 log_p1 = []
                 log_p2 = []
-                index = torch.zeros((seq_length, j-i-1), dtype=torch.long, 
+                index = torch.zeros((seq_length, j-i-1), dtype=torch.long,
                     device=self.device, requires_grad=False)
                 for k in range(i+1, j):
 
@@ -525,7 +543,7 @@ class DMVFlow(nn.Module):
                 index = index.unsqueeze(0).expand(self.num_state, *index.size())
 
                 log_stop_left_gather = torch.gather(
-                    log_stop_left.unsqueeze(-1).expand(*log_stop_left.size(), j-i-1), 
+                    log_stop_left.unsqueeze(-1).expand(*log_stop_left.size(), j-i-1),
                     1, index)
 
                 # log_p_tmp[b, i, m, j, n] = log_p1[b, i, m] + log_p2[b, j, n] + stop_left[0, j, n==k]
@@ -624,7 +642,7 @@ class DMVFlow(nn.Module):
                 # right attachment
                 log_p1 = []
                 log_p2 = []
-                index = torch.zeros((seq_length, j-i-1), dtype=torch.long, 
+                index = torch.zeros((seq_length, j-i-1), dtype=torch.long,
                     device=self.device, requires_grad=False)
                 for k in range(i+1, j):
 
@@ -639,7 +657,7 @@ class DMVFlow(nn.Module):
 
                 # (num_state, seq_len, k)
                 log_stop_right_gather = torch.gather(
-                    log_stop_right.unsqueeze(-1).expand(*log_stop_right.size(), j-i-1), 
+                    log_stop_right.unsqueeze(-1).expand(*log_stop_right.size(), j-i-1),
                     1, index)
 
                 # log_p2_tmp: (b, j, k)
@@ -675,7 +693,7 @@ class DMVFlow(nn.Module):
                 # left attachment
                 log_p1 = []
                 log_p2 = []
-                index = torch.zeros((seq_length, j-i-1), dtype=torch.long, 
+                index = torch.zeros((seq_length, j-i-1), dtype=torch.long,
                     device=self.device, requires_grad=False)
                 for k in range(i+1, j):
 
@@ -689,7 +707,7 @@ class DMVFlow(nn.Module):
 
                 # (num_state, seq_len, k)
                 log_stop_left_gather = torch.gather(
-                    log_stop_left.unsqueeze(-1).expand(*log_stop_left.size(), j-i-1), 
+                    log_stop_left.unsqueeze(-1).expand(*log_stop_left.size(), j-i-1),
                     1, index)
 
                 # log_p1_tmp: (b, i, k)
