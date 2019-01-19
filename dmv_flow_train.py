@@ -136,6 +136,7 @@ def main(args):
         raise ValueError("{} is not supported".format(args.opt))
 
     log_niter = (train_data.length//args.batch_size)//5
+    # log_niter = 20
     report_ll = report_num_words = report_num_sents = epoch = train_iter = 0
     stop_avg_ll = stop_num_words = 0
     stop_avg_ll_last = 1
@@ -153,7 +154,7 @@ def main(args):
     for epoch in range(args.epochs):
         report_ll = report_num_sents = report_num_words = 0
         for iter_obj in train_data.data_iter(batch_size=args.batch_size):
-            batch_size = len(iter_obj.pos)
+            _, batch_size = iter_obj.pos.size()
             num_words = iter_obj.mask.sum().item()
             optimizer.zero_grad()
 
@@ -174,7 +175,7 @@ def main(args):
             torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
             optimizer.step()
 
-            report_ll += -nll.item()
+            report_ll -= nll.item()
             report_num_words += num_words
             report_num_sents += batch_size
 
@@ -186,7 +187,12 @@ def main(args):
                       report_ll / report_num_words, model.var.data.max(), \
                       model.var.data.min(), time.time() - begin_time), file=sys.stderr)
 
+            # break
+
             train_iter += 1
+
+        print("\nTRAIN epoch {}: ll_per_sent: {:.4f}, ll_per_word: {:.4f}\n".format(
+            epoch, report_ll / report_num_sents, report_ll / report_num_words))
 
         if args.mode == "supervised":
             with torch.no_grad():

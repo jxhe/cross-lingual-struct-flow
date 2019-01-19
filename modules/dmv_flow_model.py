@@ -63,7 +63,7 @@ class DMVFlow(nn.Module):
 
         # Gaussian Variance
         self.var = Parameter(torch.zeros(num_dims, dtype=torch.float32))
-        self.var.requires_grad = False
+        # self.var.requires_grad = False
 
         # dim0 is head and dim1 is dependent
         self.attach_left = Parameter(torch.Tensor(self.num_state, self.num_state))
@@ -94,8 +94,8 @@ class DMVFlow(nn.Module):
             return
 
         # init transition params
-        self.attach_left.uniform_().add_(0.01)
-        self.attach_right.uniform_().add_(0.01)
+        self.attach_left.uniform_().add_(1.)
+        self.attach_right.uniform_().add_(1.)
         self.root_attach_left.uniform_().add_(1)
 
         self.stop_right[0, :, 0].uniform_().add_(1)
@@ -381,7 +381,7 @@ class DMVFlow(nn.Module):
             log_attach_right_prob = torch.gather(attach_right_, index=head_pos_sub, dim=1).squeeze(1)
             log_attach_right_prob = torch.gather(log_attach_right_prob, index=pos_sub, dim=1).squeeze(1)
 
-            log_attach = torch.mul(dir_left, log_attach_left_prob) + torch.mul(1.0 - dir_left, log_attach_left_prob)
+            log_attach = torch.mul(dir_left, log_attach_left_prob) + torch.mul(1.0 - dir_left, log_attach_right_prob)
 
             log_attach = torch.mul(log_attach, head_mask.float())
 
