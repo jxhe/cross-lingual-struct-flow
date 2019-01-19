@@ -322,121 +322,196 @@ class DMVFlow(nn.Module):
         return constant - \
                0.5 * torch.sum((means - sents) ** 2 / var, dim=-1)
 
-    def supervised_loss(self, sents, iter_obj):
+    def set_dmv_params(self, train_data):
+        self.attach_left.fill_(1.)
+        self.attach_right.fill_(1.)
+        self.root_attach_left.fill_(1.)
+        self.stop_right.fill_(1.)
+        self.stop_left.fill_(1.)
 
+        for pos_s, head_s, left_s, right_s in zip(train_data.tags, 
+                                                  train_data.heads,
+                                                  train_data.num_left_child,
+                                                  train_data.num_right_child):
+            assert(len(pos_s) == len(head_s))
+            for i, pos in enumerate(pos_s):
+                head = head_s[i]
+                head_pos = pos[head]
+                left = left_s[i]
+                right = right_s[i]
+
+                if head == -1:
+                    self.root_attach_left[pos] += 1
+                    continue
+
+                assert(i != head)
+                if i < head:
+                    self.attach_left[head_pos, pos] += 1
+                elif i > head:
+                    self.attach_right[head_pos, pos] += 1
+
+                if left > 0:
+                    self.stop_left[0, pos, 1] += 1
+                    self.stop_left[0, pos, 0] += left - 1
+                    self.stop_left[1, pos, 0] += 1
+                else:
+                    self.stop_left[1, pos, 1] += 1
+
+                if right > 0:
+                    self.stop_right[0, pos, 1] += 1
+                    self.stop_right[0, pos, 0] += right - 1
+                    self.stop_right[1, pos, 0] += 1
+                else:
+                    self.stop_right[1, pos, 1] += 1
+
+        self.attach_left = torch.log(self.attach_left / self.attach_left.sum(dim=1, keepdim=True))          
+        self.attach_right = torch.log(self.attach_right / self.attach_right.sum(dim=1, keepdim=True))
+
+        self.stop_right = torch.log(self.stop_right / self.stop_right.sum(dim=0, keepdim=False))
+        self.stop_left = torch.log(self.stop_left / self.stop_left.sum(dim=0, keepdim=False))
+        self.root_attach_left = torch.log(self.root_attach_left / self.root_attach_left.sum())
+
+
+
+    def supervised_loss_wpos(self, iter_obj):
         """
         Args:
-            sents: A tensor with size (batch_size, seq_len, features)
-            pos: (seq_len, batch_size)
-            head: (seq_len, batch_size)
-            num_left_child: (seq_len, batch_size)
-            num_right_child: (seq_len, batch_size)
-            masks: (seq_len, batch_size)
+            iter_obj.embed: (seq_len, batch_size, num_dim)
+            iter_obj.pos: (seq_len, batch_size)
+            iter_obj.head: (seq_len, batch_size)
+            iter_obj.num_left_child: (seq_len, batch_size)
+            iter_obj.num_right_child: (seq_len, batch_size)
+            iter_obj.masks: (seq_len, batch_size)
+
         """
-        pos = iter_obj.pos
-        head = iter_obj.head
-        num_left_child = iter_obj.l_deps
-        num_right_child = iter_obj.r_deps
-        masks = iter_obj.mask
 
-        seq_len, batch_size = pos.size()
-
-        attach_left_ = log_softmax(self.attach_left, dim=1).expand(batch_size, *self.attach_left.size())
-        attach_right_ = log_softmax(self.attach_right, dim=1).expand(batch_size, *self.attach_right.size())
-        root_attach_ = log_softmax(self.root_attach_left, dim=0).expand(batch_size, *self.root_attach_left.size())
-        stop_right_s = log_softmax(self.stop_right, dim=0).expand(batch_size, *self.stop_right.size())
-        stop_left_s = log_softmax(self.stop_left, dim=0).expand(batch_size, *self.stop_left.size())
-
-        # (batch_size, num_state, 2)
-        stop_right_ = stop_right_s[:, 1, :, :]
-        stop_left_ = stop_left_s[:, 1, :, :]
-        continue_right_ = stop_right_s[:, 0, :, :]
-        continue_left_ = stop_left_s[:, 0, :, :]
+        embed = iter_obj.embed
 
         # (batch_size, seq_len)
         pos_t = pos.transpose(0, 1)
-        density = self._eval_log_density_supervised(sents, pos_t)
+        density = self._eval_log_density_supervised(embed, pos_t)
 
         log_emission_prob = torch.mul(density, masks.transpose(0, 1)).sum()
 
-        for i in range(seq_len):
-            # 1 indicates left dependent
-            dir_left = (i < head[i]).float()
-
-            # (batch_size, 1)
-            pos_sub = pos[i].unsqueeze(1)
+        return -log_emission_prob   
 
 
-            head_mask = (head[i] >= 0).long()
-            head_index = torch.mul(head_mask, head[i])
-            # (batch_size, 1, num_state)
-            head_pos_sub = torch.gather(pos, index=head_index.unsqueeze(0), dim=0).squeeze(0) \
-                                .view(batch_size, 1, 1).expand(batch_size, 1, self.num_state)
 
-            # attach prob
-            # (batch_size, num_state) --> (batch_size)
-            log_attach_left_prob = torch.gather(attach_left_, index=head_pos_sub, dim=1).squeeze(1)
-            log_attach_left_prob = torch.gather(log_attach_left_prob, index=pos_sub, dim=1).squeeze(1)
+    # def supervised_loss(self, sents, iter_obj):
 
-            log_attach_right_prob = torch.gather(attach_right_, index=head_pos_sub, dim=1).squeeze(1)
-            log_attach_right_prob = torch.gather(log_attach_right_prob, index=pos_sub, dim=1).squeeze(1)
+    #     """
+    #     Args:
+    #         sents: A tensor with size (batch_size, seq_len, features)
+    #         pos: (seq_len, batch_size)
+    #         head: (seq_len, batch_size)
+    #         num_left_child: (seq_len, batch_size)
+    #         num_right_child: (seq_len, batch_size)
+    #         masks: (seq_len, batch_size)
+    #     """
+    #     pos = iter_obj.pos
+    #     head = iter_obj.head
+    #     num_left_child = iter_obj.l_deps
+    #     num_right_child = iter_obj.r_deps
+    #     masks = iter_obj.mask
 
-            log_attach = torch.mul(dir_left, log_attach_left_prob) + torch.mul(1.0 - dir_left, log_attach_right_prob)
+    #     seq_len, batch_size = pos.size()
 
-            log_attach = torch.mul(log_attach, head_mask.float())
+    #     attach_left_ = log_softmax(self.attach_left, dim=1).expand(batch_size, *self.attach_left.size())
+    #     attach_right_ = log_softmax(self.attach_right, dim=1).expand(batch_size, *self.attach_right.size())
+    #     root_attach_ = log_softmax(self.root_attach_left, dim=0).expand(batch_size, *self.root_attach_left.size())
+    #     stop_right_s = log_softmax(self.stop_right, dim=0).expand(batch_size, *self.stop_right.size())
+    #     stop_left_s = log_softmax(self.stop_left, dim=0).expand(batch_size, *self.stop_left.size())
 
-            # 1 indicates root
-            dir_root = (head[i] == -1).float()
-            log_root_prob = torch.gather(root_attach_, index=pos_sub, dim=1).squeeze(1)
-            log_attach = log_attach + torch.mul(dir_root, log_root_prob)
+    #     # (batch_size, num_state, 2)
+    #     stop_right_ = stop_right_s[:, 1, :, :]
+    #     stop_left_ = stop_left_s[:, 1, :, :]
+    #     continue_right_ = stop_right_s[:, 0, :, :]
+    #     continue_left_ = stop_left_s[:, 0, :, :]
 
-            log_attach = torch.mul(log_attach, masks[i])
+    #     # (batch_size, seq_len)
+    #     pos_t = pos.transpose(0, 1)
+    #     density = self._eval_log_density_supervised(sents, pos_t)
 
-            log_prob = log_emission_prob + log_attach.sum()
+    #     log_emission_prob = torch.mul(density, masks.transpose(0, 1)).sum()
 
-            # stop prob
-            # (batch_size, num_state, 1), 1 indicates no child
-            stop_adj_left = (num_left_child[i] == 0).long().view(batch_size, 1, 1).expand(batch_size, self.num_state, 1)
-            stop_adj_right = (num_right_child[i] == 0).long().view(batch_size, 1, 1).expand(batch_size, self.num_state, 1)
+    #     for i in range(seq_len):
+    #         # 1 indicates left dependent
+    #         dir_left = (i < head[i]).float()
 
-            # (batch_size, num_state) --> (batch_size)
-            log_stop_right_prob = torch.gather(stop_right_, index=stop_adj_right, dim=2).squeeze(2)
-            log_stop_right_prob = torch.gather(log_stop_right_prob, index=pos_sub, dim=1).squeeze(1)
-            log_stop_left_prob = torch.gather(stop_left_, index=stop_adj_left, dim=2).squeeze(2)
-            log_stop_left_prob = torch.gather(log_stop_left_prob, index=pos_sub, dim=1).squeeze(1)
-
-            log_stop = torch.mul(log_stop_right_prob + log_stop_left_prob, masks[i])
-
-            log_prob = log_prob + log_stop.sum()
-
-            # continue prob, 1 represents the existence of continue prob
-            pos_sub_ = pos_sub.unsqueeze(2).expand(batch_size, 1, 2)
-
-            # (batch_size, 2)
-            continue_right_sub = torch.gather(continue_right_, index=pos_sub_, dim=1).squeeze(1)
-            continue_left_sub = torch.gather(continue_left_, index=pos_sub_, dim=1).squeeze(1)
-
-            # (batch_size)
-            continue_flag_left = (num_left_child[i] > 0)
-            continue_flag_right = (num_right_child[i] > 0)
-
-            continue_flag_left = continue_flag_left.float()
-            continue_flag_right = continue_flag_right.float()
-
-            log_continue_right_prob = torch.mul(continue_right_sub[:,1], continue_flag_right)
-            log_continue_left_prob = torch.mul(continue_left_sub[:,1], continue_flag_left)
-
-            log_continue_right_prob = log_continue_right_prob + \
-                torch.mul(continue_flag_right, torch.mul((num_right_child[i]-1).float(), continue_right_sub[:,0]))
-            log_continue_left_prob = log_continue_left_prob + \
-                torch.mul(continue_flag_left, torch.mul((num_left_child[i]-1).float(), continue_left_sub[:,0]))
-
-            log_continue = torch.mul(log_continue_left_prob + log_continue_right_prob, masks[i])
-
-            log_prob = log_prob + log_continue.sum()
+    #         # (batch_size, 1)
+    #         pos_sub = pos[i].unsqueeze(1)
 
 
-        return -log_prob
+    #         head_mask = (head[i] >= 0).long()
+    #         head_index = torch.mul(head_mask, head[i])
+    #         # (batch_size, 1, num_state)
+    #         head_pos_sub = torch.gather(pos, index=head_index.unsqueeze(0), dim=0).squeeze(0) \
+    #                             .view(batch_size, 1, 1).expand(batch_size, 1, self.num_state)
+
+    #         # attach prob
+    #         # (batch_size, num_state) --> (batch_size)
+    #         log_attach_left_prob = torch.gather(attach_left_, index=head_pos_sub, dim=1).squeeze(1)
+    #         log_attach_left_prob = torch.gather(log_attach_left_prob, index=pos_sub, dim=1).squeeze(1)
+
+    #         log_attach_right_prob = torch.gather(attach_right_, index=head_pos_sub, dim=1).squeeze(1)
+    #         log_attach_right_prob = torch.gather(log_attach_right_prob, index=pos_sub, dim=1).squeeze(1)
+
+    #         log_attach = torch.mul(dir_left, log_attach_left_prob) + torch.mul(1.0 - dir_left, log_attach_right_prob)
+
+    #         log_attach = torch.mul(log_attach, head_mask.float())
+
+    #         # 1 indicates root
+    #         dir_root = (head[i] == -1).float()
+    #         log_root_prob = torch.gather(root_attach_, index=pos_sub, dim=1).squeeze(1)
+    #         log_attach = log_attach + torch.mul(dir_root, log_root_prob)
+
+    #         log_attach = torch.mul(log_attach, masks[i])
+
+    #         log_prob = log_emission_prob + log_attach.sum()
+
+    #         # stop prob
+    #         # (batch_size, num_state, 1), 1 indicates no child
+    #         stop_adj_left = (num_left_child[i] == 0).long().view(batch_size, 1, 1).expand(batch_size, self.num_state, 1)
+    #         stop_adj_right = (num_right_child[i] == 0).long().view(batch_size, 1, 1).expand(batch_size, self.num_state, 1)
+
+    #         # (batch_size, num_state) --> (batch_size)
+    #         log_stop_right_prob = torch.gather(stop_right_, index=stop_adj_right, dim=2).squeeze(2)
+    #         log_stop_right_prob = torch.gather(log_stop_right_prob, index=pos_sub, dim=1).squeeze(1)
+    #         log_stop_left_prob = torch.gather(stop_left_, index=stop_adj_left, dim=2).squeeze(2)
+    #         log_stop_left_prob = torch.gather(log_stop_left_prob, index=pos_sub, dim=1).squeeze(1)
+
+    #         log_stop = torch.mul(log_stop_right_prob + log_stop_left_prob, masks[i])
+
+    #         log_prob = log_prob + log_stop.sum()
+
+    #         # continue prob, 1 represents the existence of continue prob
+    #         pos_sub_ = pos_sub.unsqueeze(2).expand(batch_size, 1, 2)
+
+    #         # (batch_size, 2)
+    #         continue_right_sub = torch.gather(continue_right_, index=pos_sub_, dim=1).squeeze(1)
+    #         continue_left_sub = torch.gather(continue_left_, index=pos_sub_, dim=1).squeeze(1)
+
+    #         # (batch_size)
+    #         continue_flag_left = (num_left_child[i] > 0)
+    #         continue_flag_right = (num_right_child[i] > 0)
+
+    #         continue_flag_left = continue_flag_left.float()
+    #         continue_flag_right = continue_flag_right.float()
+
+    #         log_continue_right_prob = torch.mul(continue_right_sub[:,1], continue_flag_right)
+    #         log_continue_left_prob = torch.mul(continue_left_sub[:,1], continue_flag_left)
+
+    #         log_continue_right_prob = log_continue_right_prob + \
+    #             torch.mul(continue_flag_right, torch.mul((num_right_child[i]-1).float(), continue_right_sub[:,0]))
+    #         log_continue_left_prob = log_continue_left_prob + \
+    #             torch.mul(continue_flag_left, torch.mul((num_left_child[i]-1).float(), continue_left_sub[:,0]))
+
+    #         log_continue = torch.mul(log_continue_left_prob + log_continue_right_prob, masks[i])
+
+    #         log_prob = log_prob + log_continue.sum()
+
+
+    #     return -log_prob
 
 
     def unsupervised_loss(self, sents, masks):

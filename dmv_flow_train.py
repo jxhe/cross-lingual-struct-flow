@@ -33,7 +33,7 @@ def init_config():
     # model config
     parser.add_argument('--model', choices=['gaussian', 'nice'], default='gaussian')
     parser.add_argument('--mode',
-                         choices=['supervised', 'unsupervised', 'both', 'eval'],
+                         choices=['supervised_wpos', 'supervised_wopos', 'unsupervised', 'both', 'eval'],
                          default='supervised')
 
     # optimization params
@@ -142,14 +142,18 @@ def main(args):
     stop_avg_ll_last = 1
     dir_last = 0
     begin_time = time.time()
-
-    print('begin training')
-
     # with torch.no_grad():
     #     directed = model.test(test_data)
     # print("TEST accuracy: {}".format(directed))
 
     best_acc = 0.
+
+    if args.mode == "supervised_wpos":
+        print("set DMV paramters directly")
+        with torch.no_grad():
+            model.set_dmv_params(train_data)
+
+    print("begin training")
 
     for epoch in range(args.epochs):
         report_ll = report_num_sents = report_num_words = 0
@@ -163,8 +167,10 @@ def main(args):
 
             if args.mode == "unsupervised":
                 nll = model.unsupervised_loss(sents, iter_obj.masks)
-            elif args.mode == "supervised":
-                nll = model.supervised_loss(sents, iter_obj)
+            elif args.mode == "supervised_wpos":
+                nll = model.supervised_wpos(iter_obj)
+            elif args.mode == "supervised_wopos":
+                pass
             else:
                 raise ValueError("{} mode is not supported".format(args.mode))
 
