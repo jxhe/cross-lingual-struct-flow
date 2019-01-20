@@ -168,7 +168,7 @@ def main(args):
             if args.mode == "unsupervised":
                 nll = model.unsupervised_loss(sents, iter_obj.masks)
             elif args.mode == "supervised_wpos":
-                nll = model.supervised_wpos(iter_obj)
+                nll = model.supervised_loss_wpos(iter_obj)
             elif args.mode == "supervised_wopos":
                 pass
             else:
@@ -200,7 +200,7 @@ def main(args):
         print("\nTRAIN epoch {}: ll_per_sent: {:.4f}, ll_per_word: {:.4f}\n".format(
             epoch, report_ll / report_num_sents, report_ll / report_num_words))
 
-        if args.mode == "supervised":
+        if args.mode == "supervised_wpos":
             with torch.no_grad():
                 acc = model.test(val_data)
                 print('\nDEV: *****epoch {}, iter {}, acc {}*****\n'.format(

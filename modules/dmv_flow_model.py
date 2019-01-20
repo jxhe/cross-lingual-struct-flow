@@ -329,14 +329,14 @@ class DMVFlow(nn.Module):
         self.stop_right.fill_(1.)
         self.stop_left.fill_(1.)
 
-        for pos_s, head_s, left_s, right_s in zip(train_data.tags, 
+        for pos_s, head_s, left_s, right_s in zip(train_data.postags,
                                                   train_data.heads,
-                                                  train_data.num_left_child,
-                                                  train_data.num_right_child):
+                                                  train_data.left_num_deps,
+                                                  train_data.right_num_deps):
             assert(len(pos_s) == len(head_s))
             for i, pos in enumerate(pos_s):
                 head = head_s[i]
-                head_pos = pos[head]
+                head_pos = pos_s[head]
                 left = left_s[i]
                 right = right_s[i]
 
@@ -364,12 +364,12 @@ class DMVFlow(nn.Module):
                 else:
                     self.stop_right[1, pos, 1] += 1
 
-        self.attach_left = torch.log(self.attach_left / self.attach_left.sum(dim=1, keepdim=True))          
-        self.attach_right = torch.log(self.attach_right / self.attach_right.sum(dim=1, keepdim=True))
+        self.attach_left.copy_(torch.log(self.attach_left / self.attach_left.sum(dim=1, keepdim=True)))
+        self.attach_right.copy_(torch.log(self.attach_right / self.attach_right.sum(dim=1, keepdim=True)))
 
-        self.stop_right = torch.log(self.stop_right / self.stop_right.sum(dim=0, keepdim=False))
-        self.stop_left = torch.log(self.stop_left / self.stop_left.sum(dim=0, keepdim=False))
-        self.root_attach_left = torch.log(self.root_attach_left / self.root_attach_left.sum())
+        self.stop_right.copy_(torch.log(self.stop_right / self.stop_right.sum(dim=0, keepdim=False)))
+        self.stop_left.copy_(torch.log(self.stop_left / self.stop_left.sum(dim=0, keepdim=False)))
+        self.root_attach_left.copy_(torch.log(self.root_attach_left / self.root_attach_left.sum()))
 
 
 
@@ -379,21 +379,21 @@ class DMVFlow(nn.Module):
             iter_obj.embed: (seq_len, batch_size, num_dim)
             iter_obj.pos: (seq_len, batch_size)
             iter_obj.head: (seq_len, batch_size)
-            iter_obj.num_left_child: (seq_len, batch_size)
-            iter_obj.num_right_child: (seq_len, batch_size)
-            iter_obj.masks: (seq_len, batch_size)
+            iter_obj.l_deps: (seq_len, batch_size)
+            iter_obj.r_deps: (seq_len, batch_size)
+            iter_obj.mask: (seq_len, batch_size)
 
         """
 
-        embed = iter_obj.embed
+        embed = iter_obj.embed.transpose(0, 1)
 
         # (batch_size, seq_len)
-        pos_t = pos.transpose(0, 1)
+        pos_t = iter_obj.pos.transpose(0, 1)
         density = self._eval_log_density_supervised(embed, pos_t)
 
-        log_emission_prob = torch.mul(density, masks.transpose(0, 1)).sum()
+        log_emission_prob = torch.mul(density, iter_obj.mask.transpose(0, 1)).sum()
 
-        return -log_emission_prob   
+        return -log_emission_prob
 
 
 
