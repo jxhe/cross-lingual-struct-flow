@@ -98,7 +98,8 @@ def main(args):
         train_max_len = 20
 
     train_data = ConlluData(args.train_file, word_vec_dict,
-            max_len=train_max_len, device=device)
+            max_len=train_max_len, device=device, 
+            read_tree=(args.mode == "supervised_wopos"))
     pos_to_id = train_data.pos_to_id
 
     val_data = ConlluData(args.val_file, word_vec_dict,
@@ -116,7 +117,8 @@ def main(args):
     print("#test sentences: {}".format(test_data.length))
 
     exclude_pos = [pos_to_id["PUNCT"], pos_to_id["SYM"]]
-    model = dmv.DMVFlow(args, len(pos_to_id), num_dims, exclude_pos).to(device)
+    model = dmv.DMVFlow(args, len(pos_to_id), 
+        num_dims, exclude_pos, word_vec_dict).to(device)
 
     init_seed = next(train_data.data_iter(args.batch_size))
 
@@ -157,50 +159,73 @@ def main(args):
 
     for epoch in range(args.epochs):
         report_ll = report_num_sents = report_num_words = 0
-        for iter_obj in train_data.data_iter(batch_size=args.batch_size):
-            _, batch_size = iter_obj.pos.size()
-            num_words = iter_obj.mask.sum().item()
+        if args.mode == "supervised_wopos":
             optimizer.zero_grad()
+            for cnt, i in enumerate(np.random.permutation(len(train_data.trees))):
+                train_tree, num_words = train_data.trees[i].tree, train_data.trees[i].length
+                nll, jacobian_loss = model.supervised_loss_wopos(train_tree)
+                nll.backward()
 
-            sents, jacobian_loss = model.transform(iter_obj.embed)
-            sents = sents.transpose(0, 1)
-
-            if args.mode == "unsupervised":
-                nll = model.unsupervised_loss(sents, iter_obj.masks)
-            elif args.mode == "supervised_wpos":
-                nll = model.supervised_loss_wpos(iter_obj)
-            elif args.mode == "supervised_wopos":
-                pass
-            else:
-                raise ValueError("{} mode is not supported".format(args.mode))
-
-            avg_ll_loss = (nll + jacobian_loss) / batch_size
-
-            avg_ll_loss.backward()
-
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
-            optimizer.step()
-
-            report_ll -= nll.item()
-            report_num_words += num_words
-            report_num_sents += batch_size
+                if (cnt+1) % args.batch_size == 0:
+                    # torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
+                    optimizer.step()
+                    optimizer.zero_grad()
 
 
-            if train_iter % log_niter == 0:
-                print('epoch %d, iter %d, ll_per_sent %.4f, ll_per_word %.4f, ' \
-                      'max_var %.4f, min_var %.4f time elapsed %.2f sec' % \
-                      (epoch, train_iter, report_ll / report_num_sents, \
-                      report_ll / report_num_words, model.var.data.max(), \
-                      model.var.data.min(), time.time() - begin_time), file=sys.stderr)
+                report_ll -= nll.item()
+                report_num_words += num_words
+                report_num_sents += 1       
+                
+                if cnt % (log_niter * args.batch_size) == 0:
+                    print('epoch %d, sent %d, ll_per_sent %.4f, ll_per_word %.4f, ' \
+                          'max_var %.4f, min_var %.4f time elapsed %.2f sec' % \
+                          (epoch, cnt, report_ll / report_num_sents, \
+                          report_ll / report_num_words, model.var.data.max(), \
+                          model.var.data.min(), time.time() - begin_time), file=sys.stderr)
 
-            # break
+        else:
+            for iter_obj in train_data.data_iter(batch_size=args.batch_size):
+                _, batch_size = iter_obj.pos.size()
+                num_words = iter_obj.mask.sum().item()
+                optimizer.zero_grad()
 
-            train_iter += 1
+                sents, jacobian_loss = model.transform(iter_obj.embed)
+                sents = sents.transpose(0, 1)
+
+                if args.mode == "unsupervised":
+                    nll = model.unsupervised_loss(sents, iter_obj.masks)
+                elif args.mode == "supervised_wpos":
+                    nll = model.supervised_loss_wpos(iter_obj)
+                else:
+                    raise ValueError("{} mode is not supported".format(args.mode))
+
+                avg_ll_loss = (nll + jacobian_loss) / batch_size
+
+                avg_ll_loss.backward()
+
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
+                optimizer.step()
+
+                report_ll -= nll.item()
+                report_num_words += num_words
+                report_num_sents += batch_size
+
+
+                if train_iter % log_niter == 0:
+                    print('epoch %d, iter %d, ll_per_sent %.4f, ll_per_word %.4f, ' \
+                          'max_var %.4f, min_var %.4f time elapsed %.2f sec' % \
+                          (epoch, train_iter, report_ll / report_num_sents, \
+                          report_ll / report_num_words, model.var.data.max(), \
+                          model.var.data.min(), time.time() - begin_time), file=sys.stderr)
+
+                # break
+
+                train_iter += 1
 
         print("\nTRAIN epoch {}: ll_per_sent: {:.4f}, ll_per_word: {:.4f}\n".format(
             epoch, report_ll / report_num_sents, report_ll / report_num_words))
 
-        if args.mode == "supervised_wpos":
+        if args.mode == "supervised_wpos" or args.mode == "supervised_wopos":
             with torch.no_grad():
                 acc = model.test(val_data)
                 print('\nDEV: *****epoch {}, iter {}, acc {}*****\n'.format(

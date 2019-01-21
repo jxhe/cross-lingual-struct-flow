@@ -37,7 +37,8 @@ def log_softmax(input, dim):
 
 
 class DMVFlow(nn.Module):
-    def __init__(self, args, num_state, num_dims, punc_sym):
+    def __init__(self, args, num_state, num_dims, 
+                 punc_sym, word_vec_dict=None):
         super(DMVFlow, self).__init__()
 
         self.num_state = num_state
@@ -48,6 +49,7 @@ class DMVFlow(nn.Module):
         self.hidden_units = num_dims // 2
 
         self.punc_sym = punc_sym
+        self.word2vec = word_vec_dict
 
         self.harmonic = False
 
@@ -249,6 +251,7 @@ class DMVFlow(nn.Module):
                 print('batch %d out of memory' % batch_id_)
                 continue
 
+            #TODO: check parse_s if follows original sentence order
             for pos_s, gold_s, parse_s in zip(iter_obj.pos.transpose(0, 1),
                     iter_obj.head.transpose(0, 1), parse):
                 directed, length = self.measures(pos_s, gold_s, parse_s)
@@ -396,6 +399,114 @@ class DMVFlow(nn.Module):
         return -log_emission_prob
 
 
+    def supervised_loss_wopos(self, tree):
+        """This is the non-batched version of supervised loss when
+        dep structure is known but pos tags are unknown. 
+
+        Args:
+            tree: TreeToken object from conllu
+
+        Returns: Tensor1, Tensor2
+            Tensor1: a scalar tensor of nll
+            Tensor2: Jacobian loss, scalar tensor
+
+        """
+        # normalizing parameters
+        self.log_attach_left = log_softmax(self.attach_left, dim=1)
+        self.log_attach_right = log_softmax(self.attach_right, dim=1)
+        self.log_stop_right = log_softmax(self.stop_right, dim=0)
+        self.log_stop_left = log_softmax(self.stop_left, dim=0)
+        self.log_root_attach_left = log_softmax(self.root_attach_left, dim=0)
+
+        constant = -self.num_dims/2.0 * (math.log(2 * math.pi)) - \
+                0.5 * torch.sum(torch.log(self.var))
+
+        # (num_state)
+        log_prob, jacob = self._calc_log_prob(tree, constant)
+
+        log_prob = self.log_root_attach_left + log_prob
+
+        return -log_prob.sum(), jacob
+
+    def _calc_log_prob(self, tree, constant):
+        """recursion components to compute the log prob of the root 
+        of the current tree being a latent pos tag
+
+        Args:
+            tree: TreeToken
+            consant: the Gaussian density constant
+
+        Returns: Tensor1, Tensor2:
+            Tensor1: log prob of root beging a latent pos tag,
+                     shape [num_state]
+            Tensor2: Jacobian loss, with shape []
+        """
+
+        token = tree.token["form"]
+        embed = self.word2vec[token]
+        embed = torch.tensor(embed, dtype=torch.float32, 
+            requires_grad=False, device=self.device)
+
+        # TODO(format):
+        embed, jacobian_loss = self.transform(embed)
+
+        fefefe
+
+        # (num_state)
+        embed = embed.unsqueeze(0)
+        log_prob = constant - 0.5 * torch.sum(
+            (self.means - embed)**2 / self.var, dim=1)
+
+        # leaf nodes
+        if tree.children == []:
+            return log_prob, jacobian_loss
+
+
+        left = []
+        right = []
+
+        for t in tree.children:
+            if t.token["id"] < tree.token["id"]:
+                left.append(t)
+            elif t.toten["id"] > tree.token["id"]:
+                right.append(t)
+            else:
+                raise ValueError
+
+        if left == []:
+            log_prob = log_prob + self.log_stop_left[1, :, 1]
+        else:
+            for i, l in emuerate(left[::-1]):
+                left_prob, jacob_ = self._calc_log_prob(l, constant)
+                jacobian_loss = jacobian_loss + jacob_
+
+                # (num_state, num_state) --> (num_state)
+                left_prob = self.log_attach_left + left_prob.unsqueeze(0)
+                left_prob = log_sum_exp(left_prob, dim=1)
+
+                # valence
+                left_prob = left_prob + self.log_stop_left[0, :, int(i==0)]
+
+            log_prob = log_prob + left_prob + self.log_stop_left[1, :, 0]
+
+
+        if right == []:
+            log_prob = log_prob + self.log_stop_right[1, :, 1]
+        else:
+            for i, r in emuerate(right):
+                right_prob, jacob_ = self._calc_log_prob(r, constant)
+                jacobian_loss = jacobian_loss + jacob_
+
+                # (num_state, num_state) --> (num_state)
+                right_prob = self.log_attach_right + right_prob.unsqueeze(0)
+                right_prob = log_sum_exp(right_prob, dim=1)
+
+                # valence
+                right_prob = right_prob + self.log_stop_right[0, :, int(i==0)]
+
+            log_prob = log_prob + right_prob + self.log_stop_right[1, :, 0]
+
+        return log_prob, jacobian_loss
 
     # def supervised_loss(self, sents, iter_obj):
 
@@ -736,7 +847,7 @@ class DMVFlow(nn.Module):
                     1, index)
 
                 # log_p2_tmp: (b, j, k)
-                # max_index_loc: (b, j, k)
+                # max_index_loc: (b, j, n)
                 log_p2_tmp, max_index_loc = torch.max(log_p2, 2)
 
                 # log_p2_tmp: (b, i, k)

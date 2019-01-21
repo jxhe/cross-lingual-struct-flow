@@ -1,14 +1,16 @@
 import numpy as np
 import torch
 from collections import defaultdict, namedtuple
-from conllu import parse_incr
+from conllu import parse_incr, parse_tree_incr
 
 IterObj = namedtuple("iter_object", ["embed", "pos", "head", "r_deps", "l_deps", "mask"])
+Tree_ = namedtuple("tree", ["tree", "length"])
 
 class ConlluData(object):
     """docstring for ConlluData"""
     def __init__(self, fname, embed, device,
-                 max_len=1e3, pos_to_id_dict=None):
+                 max_len=1e3, pos_to_id_dict=None,
+                 read_tree=False):
         super(ConlluData, self).__init__()
         self.device = device
 
@@ -73,9 +75,25 @@ class ConlluData(object):
         self.pos_to_id = pos_to_id
         self.id_to_pos = {v:k for (k, v) in pos_to_id.items()}
         self.length = len(self.text)
+        self.trees = None
 
         self.text_to_embed(embed)
+        
+        fin.close()
 
+        if read_tree:
+            self.trees = []
+            fin_tree = open(fname, "r", encoding="utf-8")
+            fin_plain = open(fname, "r", encoding="utf-8")
+
+            data_file_tree = parse_tree_incr(fin_tree)
+            data_file_plain = parse_incr(fin_plain)
+
+            for s, tree in zip(data_file_plain, data_file_tree):
+                if len(s) < max_len:
+                    self.trees.append(Tree_(tree, len(s)))
+            fin_tree.close()
+            fin_plain.close()
 
     def __len__(self):
         return self.length
