@@ -37,7 +37,7 @@ def log_softmax(input, dim):
 
 
 class DMVFlow(nn.Module):
-    def __init__(self, args, num_state, num_dims, 
+    def __init__(self, args, num_state, num_dims,
                  punc_sym, word_vec_dict=None):
         super(DMVFlow, self).__init__()
 
@@ -65,7 +65,7 @@ class DMVFlow(nn.Module):
 
         # Gaussian Variance
         self.var = Parameter(torch.zeros(num_dims, dtype=torch.float32))
-        # self.var.requires_grad = False
+        self.var.requires_grad = False
 
         # dim0 is head and dim1 is dependent
         self.attach_left = Parameter(torch.Tensor(self.num_state, self.num_state))
@@ -401,7 +401,7 @@ class DMVFlow(nn.Module):
 
     def supervised_loss_wopos(self, tree):
         """This is the non-batched version of supervised loss when
-        dep structure is known but pos tags are unknown. 
+        dep structure is known but pos tags are unknown.
 
         Args:
             tree: TreeToken object from conllu
@@ -426,10 +426,10 @@ class DMVFlow(nn.Module):
 
         log_prob = self.log_root_attach_left + log_prob
 
-        return -log_prob.sum(), jacob
+        return -log_sum_exp(log_prob, dim=0), jacob
 
     def _calc_log_prob(self, tree, constant):
-        """recursion components to compute the log prob of the root 
+        """recursion components to compute the log prob of the root
         of the current tree being a latent pos tag
 
         Args:
@@ -444,13 +444,10 @@ class DMVFlow(nn.Module):
 
         token = tree.token["form"]
         embed = self.word2vec[token]
-        embed = torch.tensor(embed, dtype=torch.float32, 
+        embed = torch.tensor(embed, dtype=torch.float32,
             requires_grad=False, device=self.device)
 
-        # TODO(format):
         embed, jacobian_loss = self.transform(embed)
-
-        fefefe
 
         # (num_state)
         embed = embed.unsqueeze(0)
@@ -468,7 +465,7 @@ class DMVFlow(nn.Module):
         for t in tree.children:
             if t.token["id"] < tree.token["id"]:
                 left.append(t)
-            elif t.toten["id"] > tree.token["id"]:
+            elif t.token["id"] > tree.token["id"]:
                 right.append(t)
             else:
                 raise ValueError
@@ -476,7 +473,7 @@ class DMVFlow(nn.Module):
         if left == []:
             log_prob = log_prob + self.log_stop_left[1, :, 1]
         else:
-            for i, l in emuerate(left[::-1]):
+            for i, l in enumerate(left[::-1]):
                 left_prob, jacob_ = self._calc_log_prob(l, constant)
                 jacobian_loss = jacobian_loss + jacob_
 
@@ -493,7 +490,7 @@ class DMVFlow(nn.Module):
         if right == []:
             log_prob = log_prob + self.log_stop_right[1, :, 1]
         else:
-            for i, r in emuerate(right):
+            for i, r in enumerate(right):
                 right_prob, jacob_ = self._calc_log_prob(r, constant)
                 jacobian_loss = jacobian_loss + jacob_
 
