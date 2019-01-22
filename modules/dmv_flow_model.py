@@ -65,7 +65,7 @@ class DMVFlow(nn.Module):
 
         # Gaussian Variance
         self.var = Parameter(torch.zeros(num_dims, dtype=torch.float32))
-        self.var.requires_grad = False
+        # self.var.requires_grad = False
 
         # dim0 is head and dim1 is dependent
         self.attach_left = Parameter(torch.Tensor(self.num_state, self.num_state))
@@ -109,6 +109,8 @@ class DMVFlow(nn.Module):
         self.stop_right[1, :, 1].uniform_().add_(1)
         self.stop_left[0, :, 1].uniform_().add_(2)
         self.stop_left[1, :, 1].uniform_().add_(1)
+
+        self.var.uniform_()
 
         # initialize mean and variance with empirical values
         sents = init_seed.embed
@@ -482,9 +484,9 @@ class DMVFlow(nn.Module):
                 left_prob = log_sum_exp(left_prob, dim=1)
 
                 # valence
-                left_prob = left_prob + self.log_stop_left[0, :, int(i==0)]
+                log_prob = log_prob + left_prob + self.log_stop_left[0, :, int(i==0)]
 
-            log_prob = log_prob + left_prob + self.log_stop_left[1, :, 0]
+            log_prob = log_prob + self.log_stop_left[1, :, 0]
 
 
         if right == []:
@@ -499,9 +501,9 @@ class DMVFlow(nn.Module):
                 right_prob = log_sum_exp(right_prob, dim=1)
 
                 # valence
-                right_prob = right_prob + self.log_stop_right[0, :, int(i==0)]
+                log_prob = log_prob + right_prob + self.log_stop_right[0, :, int(i==0)]
 
-            log_prob = log_prob + right_prob + self.log_stop_right[1, :, 0]
+            log_prob = log_prob + self.log_stop_right[1, :, 0]
 
         return log_prob, jacobian_loss
 

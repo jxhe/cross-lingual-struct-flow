@@ -4,6 +4,8 @@ from math import log
 from collections import defaultdict
 from io import open
 
+from conllu import parse_incr
+
 import torch
 
 def word2id(sentences):
@@ -82,7 +84,7 @@ def read_conll(fname):
         tags.append(tag_list)
         heads.append(head_list)
 
-    return text, tags, heads
+    return text, tags
 
 def read_tag_map(fname):
     tag_map = {}
@@ -107,7 +109,7 @@ def write_conll(fname, sentences, pred_tags, null_total):
 
             for i in range(length):
                 fout.write("{}\t{}\t{}\t{}\n".format(
-                    i+1, word_list[i], pred_tag_list[i], 
+                    i+1, word_list[i], pred_tag_list[i],
                     head_list[i][1]))
             fout.write('\n')
 

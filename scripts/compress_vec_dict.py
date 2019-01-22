@@ -21,7 +21,7 @@ parser.add_argument('--lang', type=str, help='')
 args = parser.parse_args()
 
 config_file = "config.config_{}".format(args.lang)
-params = importlib.import_module(config_file).params
+params = importlib.import_module(config_file).params_markov
 args = argparse.Namespace(**vars(args), **params)
 
 word_vec_model = fastText.load_model("fastText_data/wiki.{}.bin".format(args.lang))
@@ -56,7 +56,7 @@ print("vocab length {}".format(len(vocab)))
 # cnt = 0
 # for sent in train_text:
 #     for word in sent:
-#         if word in 
+#         if word in
 # mean = sum_ / cnt
 
 suffix = args.train_file.split('/')[-1].split('-')[0].split('_')[1]

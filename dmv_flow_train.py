@@ -129,8 +129,8 @@ def main(args):
     opt_dict = {"not_improved": 0, "lr": 0., "best_score": 0}
 
     if args.opt == "adam":
-        optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-        opt_dict["lr"] = 0.001
+        optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+        opt_dict["lr"] = 0.01
     elif args.opt == "sgd":
         optimizer = torch.optim.SGD(model.parameters(), lr=1.)
         opt_dict["lr"] = 1.
@@ -167,7 +167,7 @@ def main(args):
                 nll.backward()
 
                 if (cnt+1) % args.batch_size == 0:
-                    # torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
                     optimizer.step()
                     optimizer.zero_grad()
 

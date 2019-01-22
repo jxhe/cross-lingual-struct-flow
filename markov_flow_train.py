@@ -87,9 +87,9 @@ def main(args):
     word_vec_dict.apply_transform(args.align_file)
     print('complete loading word vectors')
 
-    train_text, train_tags, _ = read_conll(args.train_file)
-    val_text, val_tags, _ = read_conll(args.val_file)
-    test_text, test_tags, _ = read_conll(args.test_file)
+    train_text, train_tags = read_conll(args.train_file)
+    val_text, val_tags = read_conll(args.val_file)
+    test_text, test_tags = read_conll(args.test_file)
 
     train_vec = sents_to_vec(word_vec_dict, train_text)
     val_vec = sents_to_vec(word_vec_dict, val_text)
