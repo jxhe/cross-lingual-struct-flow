@@ -28,8 +28,8 @@ class MarkovFlow(nn.Module):
         self.device = args.device
 
         # Gaussian Variance
-        self.var = torch.zeros(num_dims, dtype=torch.float32,
-            device=self.device, requires_grad=False)
+        self.var = Parameter(torch.zeros(num_dims, dtype=torch.float32))
+        self.var.requires_grad = False
 
         self.num_state = args.num_state
         self.num_dims = num_dims
@@ -74,6 +74,8 @@ class MarkovFlow(nn.Module):
         # load pretrained model
         if self.args.load_nice != '':
             self.load_state_dict(torch.load(self.args.load_nice), strict=False)
+
+            return
 
         # load pretrained Gaussian baseline
         if self.args.load_gaussian != '':

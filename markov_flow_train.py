@@ -30,6 +30,7 @@ def init_config():
 
     # optimization params
     parser.add_argument('--opt', choices=['adam', 'sgd'], default='adam')
+    parser.add_argument('--lr', type=float, default=0.001)
 
     # pretrained model options
     parser.add_argument('--load_nice', default='', type=str,
@@ -145,8 +146,8 @@ def main(args):
         return
 
     if args.opt == "adam":
-        optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-        opt_dict["lr"] = 0.001
+        optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+        opt_dict["lr"] = args.lr
     elif args.opt == "sgd":
         optimizer = torch.optim.SGD(model.parameters(), lr=1.)
         opt_dict["lr"] = 1.
