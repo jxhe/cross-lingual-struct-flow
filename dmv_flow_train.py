@@ -98,7 +98,7 @@ def main(args):
         train_max_len = 20
 
     train_data = ConlluData(args.train_file, word_vec_dict,
-            max_len=train_max_len, device=device, 
+            max_len=train_max_len, device=device,
             read_tree=(args.mode == "supervised_wopos"))
     pos_to_id = train_data.pos_to_id
 
@@ -117,7 +117,7 @@ def main(args):
     print("#test sentences: {}".format(test_data.length))
 
     exclude_pos = [pos_to_id["PUNCT"], pos_to_id["SYM"]]
-    model = dmv.DMVFlow(args, len(pos_to_id), 
+    model = dmv.DMVFlow(args, len(pos_to_id),
         num_dims, exclude_pos, word_vec_dict).to(device)
 
     init_seed = next(train_data.data_iter(args.batch_size))
@@ -129,8 +129,8 @@ def main(args):
     opt_dict = {"not_improved": 0, "lr": 0., "best_score": 0}
 
     if args.opt == "adam":
-        optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-        opt_dict["lr"] = 0.001
+        optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+        opt_dict["lr"] = 0.01
     elif args.opt == "sgd":
         optimizer = torch.optim.SGD(model.parameters(), lr=1.)
         opt_dict["lr"] = 1.
@@ -167,15 +167,15 @@ def main(args):
                 nll.backward()
 
                 if (cnt+1) % args.batch_size == 0:
-                    # torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
                     optimizer.step()
                     optimizer.zero_grad()
 
 
                 report_ll -= nll.item()
                 report_num_words += num_words
-                report_num_sents += 1       
-                
+                report_num_sents += 1
+
                 if cnt % (log_niter * args.batch_size) == 0:
                     print('epoch %d, sent %d, ll_per_sent %.4f, ll_per_word %.4f, ' \
                           'max_var %.4f, min_var %.4f time elapsed %.2f sec' % \

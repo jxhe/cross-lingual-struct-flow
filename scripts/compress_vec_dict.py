@@ -56,7 +56,7 @@ print("vocab length {}".format(len(vocab)))
 # cnt = 0
 # for sent in train_text:
 #     for word in sent:
-#         if word in 
+#         if word in
 # mean = sum_ / cnt
 
 suffix = args.train_file.split('/')[-1].split('-')[0].split('_')[1]
