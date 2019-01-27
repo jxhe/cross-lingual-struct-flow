@@ -56,7 +56,7 @@ class DMVFlow(nn.Module):
         self.means = Parameter(torch.Tensor(self.num_state, self.num_dims))
 
         if args.model == 'nice':
-            self.nice_layer = NICETrans(self.args.couple_layers,
+            self.proj_layer = NICETrans(self.args.couple_layers,
                                         self.args.cell_layers,
                                         self.hidden_units,
                                         self.num_dims,
@@ -78,6 +78,10 @@ class DMVFlow(nn.Module):
         self.stop_left = Parameter(torch.Tensor(2, self.num_state, 2))
 
         self.root_attach_left = Parameter(torch.Tensor(self.num_state))
+
+        self.prior_group = [self.attach_left, self.attach_right, self.stop_left, self.stop_right, \
+                            self.root_attach_left]
+        self.proj_group = list(self.proj_layer.parameters()) + [self.means]
 
     def init_params(self, init_seed, train_data):
         """
@@ -159,7 +163,7 @@ class DMVFlow(nn.Module):
         jacobian_loss = torch.zeros(1, device=self.device, requires_grad=False)
 
         if self.args.model == 'nice':
-            x, jacobian_loss_new = self.nice_layer(x)
+            x, jacobian_loss_new = self.proj_layer(x)
             jacobian_loss = jacobian_loss + jacobian_loss_new
 
 

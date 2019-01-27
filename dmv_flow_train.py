@@ -38,6 +38,8 @@ def init_config():
 
     # optimization params
     parser.add_argument('--opt', choices=['adam', 'sgd'], default='adam')
+    parser.add_argument('--prior_lr', type=float, default=0.001)
+    parser.add_argument('--proj_lr', type=float, default=0.001)
 
     # pretrained model options
     parser.add_argument('--load_nice', default='', type=str,
@@ -129,10 +131,12 @@ def main(args):
     opt_dict = {"not_improved": 0, "lr": 0., "best_score": 0}
 
     if args.opt == "adam":
-        optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
-        opt_dict["lr"] = 0.01
+        prior_optimizer = torch.optim.Adam(model.prior_group, lr=args.prior_lr)
+        proj_optimizer = torch.optim.Adam(model.proj_group, lr=args.proj_lr)
+        opt_dict["lr"] = 1.
     elif args.opt == "sgd":
-        optimizer = torch.optim.SGD(model.parameters(), lr=1.)
+        prior_optimizer = torch.optim.SGD(model.prior_group, lr=1.)
+        proj_optimizer = torch.optim.SGD(model. proj_group, lr=1.)
         opt_dict["lr"] = 1.
     else:
         raise ValueError("{} is not supported".format(args.opt))
@@ -160,16 +164,20 @@ def main(args):
     for epoch in range(args.epochs):
         report_ll = report_num_sents = report_num_words = 0
         if args.mode == "supervised_wopos":
-            optimizer.zero_grad()
+            prior_optimizer.zero_grad()
+            proj_optimizer.zero_grad()
             for cnt, i in enumerate(np.random.permutation(len(train_data.trees))):
                 train_tree, num_words = train_data.trees[i].tree, train_data.trees[i].length
                 nll, jacobian_loss = model.supervised_loss_wopos(train_tree)
                 nll.backward()
 
                 if (cnt+1) % args.batch_size == 0:
-                    torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
-                    optimizer.step()
-                    optimizer.zero_grad()
+                    torch.nn.utils.clip_grad_norm_(model.proj_group, 5.0)
+                    prior_optimizer.step()
+                    proj_optimizer.step()
+
+                    prior_optimizer.zero_grad()
+                    proj_optimizer.zero_grad()                    
 
 
                 report_ll -= nll.item()
@@ -242,11 +250,13 @@ def main(args):
                     opt_dict["not_improved"] = 0
                     opt_dict["lr"] = opt_dict["lr"] * lr_decay
                     model.load_state_dict(torch.load(args.save_path))
-                    print("new lr: {}".format(opt_dict["lr"]))
+                    print("new lr decay: {}".format(opt_dict["lr"]))
                     if args.opt == "adam":
-                        optimizer = torch.optim.Adam(model.parameters(), lr=opt_dict["lr"])
+                        prior_optimizer = torch.optim.Adam(model.prior_group, lr=opt_dict["lr"] * args.prior_lr)
+                        proj_optimizer = torch.optim.Adam(model.proj_group, lr=opt_dict["lr"] * args.proj_lr)
                     elif args.opt == "sgd":
-                        optimizer = torch.optim.SGD(model.parameters(), lr=opt_dict["lr"])
+                        prior_optimizer = torch.optim.SGD(model.prior_group, lr=opt_dict["lr"] * args.prior_lr)
+                        proj_optimizer = torch.optim.SGD(model. proj_group, lr=opt_dict["lr"] * args.proj_lr)
         else:
             torch.save(model.state_dict(), args.save_path)
 
