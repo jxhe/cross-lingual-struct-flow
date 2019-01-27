@@ -203,7 +203,7 @@ def main(args):
 
                     prior_optimizer.step()
                     inner_iter += 1
-                    if inner_iter > 50:
+                    if inner_iter > 10:
                         break
 
             # if args.mode == "supervised":
