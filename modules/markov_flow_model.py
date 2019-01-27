@@ -29,7 +29,9 @@ class MarkovFlow(nn.Module):
 
         # Gaussian Variance
         self.var = Parameter(torch.zeros(num_dims, dtype=torch.float32))
-        self.var.requires_grad = False
+
+        if not args.train_var:
+            self.var.requires_grad = False
 
         self.num_state = args.num_state
         self.num_dims = num_dims
@@ -44,12 +46,24 @@ class MarkovFlow(nn.Module):
         # Gaussian means
         self.means = Parameter(torch.Tensor(self.num_state, self.num_dims))
 
+        if args.mode == "unsupervised" and args.freeze_prior:
+            self.tparams.requires_grad = False
+            self.means.requires_grad = False
+
+        if args.mode == "unsupervised" and args.freeze_mean:
+            self.means.requires_grad = False
+
         if args.model == 'nice':
             self.nice_layer = NICETrans(self.couple_layers,
                                         self.cell_layers,
                                         self.hidden_units,
                                         self.num_dims,
                                         self.device)
+
+        if args.mode == "unsupervised" and args.freeze_proj:
+            for param in self.nice_layer.parameters():
+                param.requires_grad = False
+
 
         # prior
         self.pi = torch.zeros(self.num_state,
@@ -74,6 +88,16 @@ class MarkovFlow(nn.Module):
         # load pretrained model
         if self.args.load_nice != '':
             self.load_state_dict(torch.load(self.args.load_nice), strict=False)
+
+            if self.args.beta != 0:
+                self.means_init = self.means.clone()
+                self.tparams_init = self.tparams.clone()
+                self.proj_init = [param.clone() for param in self.nice_layer.parameters()]
+
+                # self.means_init.requires_grad = False
+                # self.tparams_init.requires_grad = False
+                # for tensor in self.proj_init:
+                #     tensor.requires_grad = False
 
             return
 
@@ -122,6 +146,16 @@ class MarkovFlow(nn.Module):
 
         return x, jacobian_loss
 
+    def MLE_loss(self):
+        # diff1 = ((self.means - self.means_init) ** 2).sum()
+        diff2 = ((self.tparams - self.tparams_init) ** 2).sum()
+
+        # diff = diff1 + diff2
+
+        # for i, param in enumerate(self.nice_layer.parameters()):
+        #     diff = diff + ((self.proj_init[i] - param) ** 2).sum()
+
+        return 0.5 * self.args.beta * diff2
 
     def unsupervised_loss(self, sents, masks):
         """

@@ -76,9 +76,10 @@ def read_conll(fname):
         tag_list = []
         head_list = []
         for token in sent:
-            sent_list.append(token["form"])
-            tag_list.append(token["upostag"])
-            head_list.append(token["head"])
+            if token["upostag"] != "_":
+                sent_list.append(token["form"])
+                tag_list.append(token["upostag"])
+                head_list.append(token["head"])
 
         text.append(sent_list)
         tags.append(tag_list)

@@ -27,6 +27,12 @@ def init_config():
     parser.add_argument('--mode',
                          choices=['supervised', 'unsupervised', 'both', 'eval'],
                          default='supervised')
+    parser.add_argument('--freeze_proj', action='store_true', default=False)
+    parser.add_argument('--freeze_prior', action='store_true', default=False)
+    parser.add_argument('--freeze_mean', action='store_true', default=False)
+    parser.add_argument('--train_var', action='store_true', default=False,
+            help="if make variance variable trainable")
+    parser.add_argument('--beta', type=float, default=0., help="regularize params")
 
     # optimization params
     parser.add_argument('--opt', choices=['adam', 'sgd'], default='adam')
@@ -154,6 +160,11 @@ def main(args):
     else:
         raise ValueError("{} is not supported".format(args.opt))
 
+    if args.mode == "unsupervised":
+        prior_optimizer = torch.optim.Adam([model.tparams], lr=0.001)
+        proj_optimizer = torch.optim.Adam(list(model.nice_layer.parameters()), lr=args.lr)
+        opt_dict["lr"] = args.lr
+
     begin_time = time.time()
     print('begin training')
 
@@ -175,11 +186,41 @@ def main(args):
         report_obj = report_jc = report_ll = report_num_words = 0
         for sents, tags in data_iter(list(zip(train_vec, train_tag_ids)), batch_size=args.batch_size,
                                label=True, shuffle=True):
+
+            if args.mode == "unsupervised":
+                inner_iter = 0
+                for sents_tmp, tags_tmp in data_iter(list(zip(train_vec, train_tag_ids)), batch_size=args.batch_size,
+                                                     label=True, shuffle=True):
+                    proj_optimizer.zero_grad()
+                    prior_optimizer.zero_grad()
+                    batch_size = len(sents_tmp)
+                    sents_t, tags_t, masks = to_input_tensor(sents_tmp, tags_tmp, pad, device=args.device)
+                    nll, jacobian_loss = model.unsupervised_loss(sents_t, masks)
+                    avg_ll_loss = (nll + jacobian_loss)/batch_size
+
+                    avg_ll_loss = avg_ll_loss + model.MLE_loss()
+                    avg_ll_loss.backward()
+
+                    prior_optimizer.step()
+                    inner_iter += 1
+                    if inner_iter > 50:
+                        break
+
+            # if args.mode == "supervised":
+            #     optimizer.zero_grad()
+            # elif args.mode == "unsupervised":
+            #     prior_optimizer.zero_grad()
+            #     proj_optimizer.zero_grad()
+            # else:
+            #     raise ValueError
+
             train_iter += 1
             batch_size = len(sents)
             num_words = sum(len(sent) for sent in sents)
             sents_t, tags_t, masks = to_input_tensor(sents, tags, pad, device=args.device)
-            optimizer.zero_grad()
+            # optimizer.zero_grad()
+            prior_optimizer.zero_grad()
+            proj_optimizer.zero_grad()
 
             if args.mode == "unsupervised":
                 nll, jacobian_loss = model.unsupervised_loss(sents_t, masks)
@@ -190,11 +231,18 @@ def main(args):
 
             avg_ll_loss = (nll + jacobian_loss)/batch_size
 
+            # if args.beta > 0:
+            #     avg_ll_loss = avg_ll_loss + model.MLE_loss()
+                # avg_ll_loss = model.MLE_loss()
+
             avg_ll_loss.backward()
 
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
+            torch.nn.utils.clip_grad_norm_(model.nice_layer.parameters(), 5.0)
+            # torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
 
-            optimizer.step()
+            # optimizer.step()
+            prior_optimizer.step()
+            proj_optimizer.step()
 
             log_likelihood_val = -nll.item()
             jacobian_val = -jacobian_loss.item()
@@ -210,6 +258,15 @@ def main(args):
                       'min_var %.4f time elapsed %.2f sec' % (epoch, train_iter, report_ll / report_num_words, \
                       report_jc / report_num_words, report_obj / report_num_words, model.var.max(), \
                       model.var.min(), time.time() - begin_time), file=sys.stderr)
+
+                # if args.mode == "unsupervised":
+                #     with torch.no_grad():
+                #         acc = model.test_supervised(test_vec, test_tag_ids)
+                #         m1, vm, oneone = model.test_unsupervised(test_vec, test_tag_ids)
+                #     print('\nTEST: *****epoch {}, iter {}, acc {}*****\n'.format(
+                #         epoch, train_iter, acc))
+                #     print("\nTEST: M1 {}, VM {}, one-to-one {}".format(m1, vm, oneone))
+
 
         print('\nepoch %d, log_likelihood %.2f, jacobian %.2f, obj %.2f\n' % \
             (epoch, report_ll / report_num_words, report_jc / report_num_words,
