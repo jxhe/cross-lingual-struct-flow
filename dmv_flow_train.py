@@ -168,8 +168,8 @@ def main(args):
             prior_optimizer.zero_grad()
             proj_optimizer.zero_grad()
             for cnt, i in enumerate(np.random.permutation(len(train_data.trees))):
-                sub_iter = 0
                 if batch_flag:
+                    sub_iter = 0
                     for sub_cnt, sub_id in enumerate(np.random.permutation(len(train_data.trees))):
                         train_tree, num_words = train_data.trees[sub_id].tree, train_data.trees[sub_id].length
                         nll, jacobian_loss = model.supervised_loss_wopos(train_tree)
