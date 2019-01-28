@@ -179,7 +179,7 @@ def main(args):
                             prior_optimizer.step()
 
                             prior_optimizer.zero_grad()
-                            proj_optimizer.zero_grad()                     
+                            proj_optimizer.zero_grad()
                             sub_iter += 1
                             if sub_iter > 10:
                                 batch_flag = False
@@ -191,12 +191,12 @@ def main(args):
 
                 if (cnt+1) % args.batch_size == 0:
                     torch.nn.utils.clip_grad_norm_(model.proj_group, 5.0)
-                    # prior_optimizer.step()
+                    prior_optimizer.step()
                     proj_optimizer.step()
 
                     prior_optimizer.zero_grad()
                     proj_optimizer.zero_grad()
-                    batch_flag = True                    
+                    # batch_flag = True
 
 
                 report_ll -= nll.item()
