@@ -160,6 +160,7 @@ def main(args):
             model.set_dmv_params(train_data)
 
     print("begin training")
+    batch_flag = False
 
     for epoch in range(args.epochs):
         report_ll = report_num_sents = report_num_words = 0
@@ -167,17 +168,35 @@ def main(args):
             prior_optimizer.zero_grad()
             proj_optimizer.zero_grad()
             for cnt, i in enumerate(np.random.permutation(len(train_data.trees))):
+                sub_iter = 0
+                if batch_flag:
+                    for sub_cnt, sub_id in enumerate(np.random.permutation(len(train_data.trees))):
+                        train_tree, num_words = train_data.trees[sub_id].tree, train_data.trees[sub_id].length
+                        nll, jacobian_loss = model.supervised_loss_wopos(train_tree)
+                        nll.backward()
+
+                        if (sub_cnt+1) % args.batch_size == 0:
+                            prior_optimizer.step()
+
+                            prior_optimizer.zero_grad()
+                            proj_optimizer.zero_grad()                     
+                            sub_iter += 1
+                            if sub_iter > 10:
+                                batch_flag = False
+                                break
+
                 train_tree, num_words = train_data.trees[i].tree, train_data.trees[i].length
                 nll, jacobian_loss = model.supervised_loss_wopos(train_tree)
                 nll.backward()
 
                 if (cnt+1) % args.batch_size == 0:
                     torch.nn.utils.clip_grad_norm_(model.proj_group, 5.0)
-                    prior_optimizer.step()
+                    # prior_optimizer.step()
                     proj_optimizer.step()
 
                     prior_optimizer.zero_grad()
-                    proj_optimizer.zero_grad()                    
+                    proj_optimizer.zero_grad()
+                    batch_flag = True                    
 
 
                 report_ll -= nll.item()
