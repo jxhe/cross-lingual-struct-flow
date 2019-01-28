@@ -190,7 +190,7 @@ def main(args):
                 nll.backward()
 
                 if (cnt+1) % args.batch_size == 0:
-                    torch.nn.utils.clip_grad_norm_(model.proj_group, 5.0)
+                    torcgh.nn.utils.clip_grad_norm_(model.proj_group, 5.0)
                     prior_optimizer.step()
                     proj_optimizer.step()
 
