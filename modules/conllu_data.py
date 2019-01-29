@@ -4,7 +4,6 @@ from collections import defaultdict, namedtuple
 from conllu import parse_incr, parse_tree_incr
 
 IterObj = namedtuple("iter_object", ["embed", "pos", "head", "r_deps", "l_deps", "mask"])
-Tree_ = namedtuple("tree", ["tree", "length"])
 
 class ConlluData(object):
     """docstring for ConlluData"""
@@ -21,12 +20,15 @@ class ConlluData(object):
 
         text = []
         tags = []
+        trees = []
         heads = []
         right_num_deps = []
         left_num_deps = []
         fin = open(fname, "r", encoding="utf-8")
+        fin_tree = open(fname, "r", encoding="utf-8")
+        data_file_tree = parse_tree_incr(fin_tree)
         data_file = parse_incr(fin)
-        for sent in data_file:
+        for sent, tree in zip(data_file, data_file_tree):
             sent_list = []
             tag_list = []
             head_list = []
@@ -66,7 +68,9 @@ class ConlluData(object):
             heads.append(head_list)
             right_num_deps.append(right_num_deps_)
             left_num_deps.append(left_num_deps_)
+            trees.append(tree)
 
+        self.trees = trees
         self.text = text
         self.postags = tags
         self.heads = heads
@@ -80,20 +84,7 @@ class ConlluData(object):
         self.text_to_embed(embed)
         
         fin.close()
-
-        if read_tree:
-            self.trees = []
-            fin_tree = open(fname, "r", encoding="utf-8")
-            fin_plain = open(fname, "r", encoding="utf-8")
-
-            data_file_tree = parse_tree_incr(fin_tree)
-            data_file_plain = parse_incr(fin_plain)
-
-            for s, tree in zip(data_file_plain, data_file_tree):
-                if len(s) < max_len:
-                    self.trees.append(Tree_(tree, len(s)))
-            fin_tree.close()
-            fin_plain.close()
+        fin_tree.close()
 
     def __len__(self):
         return self.length
@@ -162,6 +153,15 @@ class ConlluData(object):
                 batch_head += [self.heads[index]]
                 batch_right_num_deps += [self.right_num_deps[index]]
                 batch_left_num_deps += [self.left_num_deps[index]]
+
+            sort_index = list(range(len(batch_ids)))
+            len_list = [len(x) for x in batch_pos]
+            sort_index.sort(key=lambda s: -len_list[s])
+            batch_embed = [batch_embed[x] for x in sort_index]
+            batch_pos = [batch_pos[x] for x in sort_index]
+            batch_head = [batch_head[x] for x in sort_index]
+            batch_right_num_deps = [batch_right_num_deps[x] for x in sort_index]
+            batch_left_num_deps = [batch_left_num_deps[x] for x in sort_index]
 
             embed_t, pos_t, head_t, r_deps_t, l_deps_t, masks_t = self.to_input_tensor(
                 batch_embed, batch_pos, batch_head, batch_right_num_deps, batch_left_num_deps)

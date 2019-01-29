@@ -7,7 +7,7 @@ import torch.nn as nn
 import numpy as np
 
 from collections import Counter
-from .projection import NICETrans
+from .projection import NICETrans, LSTMNICE
 from .dmv_viterbi_model import DMVDict
 
 from torch.nn import Parameter
@@ -47,6 +47,7 @@ class DMVFlow(nn.Module):
         self.device = args.device
 
         self.hidden_units = num_dims // 2
+        self.lstm_hidden_units = self.hidden_units
 
         self.punc_sym = punc_sym
         self.word2vec = word_vec_dict
@@ -61,6 +62,14 @@ class DMVFlow(nn.Module):
                                         self.hidden_units,
                                         self.num_dims,
                                         self.device)
+        elif args.model == "lstmnice":
+            self.proj_layer = LSTMNICE(self.args.lstm_layers,
+                                       self.args.couple_layers,
+                                       self.args.cell_layers,
+                                       self.lstm_hidden_units,
+                                       self.hidden_units,
+                                       self.num_dims,
+                                       self.device)
 
 
         # Gaussian Variance
@@ -119,7 +128,7 @@ class DMVFlow(nn.Module):
         # initialize mean and variance with empirical values
         sents = init_seed.embed
         masks = init_seed.mask
-        sents, _ = self.transform(sents)
+        sents, _ = self.transform(sents, masks)
         features = sents.size(-1)
         flat_sents = sents.view(-1, features)
         seed_mean = torch.sum(masks.view(-1, 1).expand_as(flat_sents) *
@@ -136,7 +145,7 @@ class DMVFlow(nn.Module):
         emb_dict = {}
         cnt_dict = Counter()
         for iter_obj in train_data.data_iter(self.args.batch_size):
-            sents_t, _ = self.transform(iter_obj.embed)
+            sents_t, _ = self.transform(iter_obj.embed, iter_obj.mask)
             sents_t = sents_t.transpose(0, 1)
             pos_t = iter_obj.pos.transpose(0, 1)
             mask_t = iter_obj.mask.transpose(0, 1)
@@ -155,7 +164,7 @@ class DMVFlow(nn.Module):
             self.means[i] = emb_dict[i] / cnt_dict[i]
 
 
-    def transform(self, x):
+    def transform(self, x, masks):
         """
         Args:
             x: (sent_length, batch_size, num_dims)
@@ -163,7 +172,7 @@ class DMVFlow(nn.Module):
         jacobian_loss = torch.zeros(1, device=self.device, requires_grad=False)
 
         if self.args.model == 'nice':
-            x, jacobian_loss_new = self.proj_layer(x)
+            x, jacobian_loss_new = self.proj_layer(x, masks)
             jacobian_loss = jacobian_loss + jacobian_loss_new
 
 
@@ -240,7 +249,7 @@ class DMVFlow(nn.Module):
 
             batch_id_ += 1
             try:
-                sents_t, _ = self.transform(iter_obj.embed)
+                sents_t, _ = self.transform(iter_obj.embed, iter_obj.mask)
                 sents_t = sents_t.transpose(0, 1)
                 # root_max_index: (batch_size, num_state, seq_length)
                 batch_size, seq_length, _ = sents_t.size()
@@ -408,12 +417,13 @@ class DMVFlow(nn.Module):
         return -log_emission_prob
 
 
-    def supervised_loss_wopos(self, tree):
+    def supervised_loss_wopos(self, tree, embed):
         """This is the non-batched version of supervised loss when
         dep structure is known but pos tags are unknown.
 
         Args:
             tree: TreeToken object from conllu
+            embed: list of embeddings
 
         Returns: Tensor1, Tensor2
             Tensor1: a scalar tensor of nll
@@ -430,14 +440,17 @@ class DMVFlow(nn.Module):
         constant = -self.num_dims/2.0 * (math.log(2 * math.pi)) - \
                 0.5 * torch.sum(torch.log(self.var))
 
+        # (seq_len, num_dims)
+        embed_t = torch.tensor(embed, dtype=torch.float32, requires_grad=False, device=self.device)
+        embed_t = self.transform(embed_t.unsqueeze(1)).squeeze(1)
         # (num_state)
-        log_prob, jacob = self._calc_log_prob(tree, constant)
+        log_prob, jacob = self._calc_log_prob(tree, constant, embed)
 
         log_prob = self.log_root_attach_left + log_prob
 
         return -log_sum_exp(log_prob, dim=0), jacob
 
-    def _calc_log_prob(self, tree, constant):
+    def _calc_log_prob(self, tree, constant, embed_s):
         """recursion components to compute the log prob of the root
         of the current tree being a latent pos tag
 
@@ -451,12 +464,8 @@ class DMVFlow(nn.Module):
             Tensor2: Jacobian loss, with shape []
         """
 
-        token = tree.token["form"]
-        embed = self.word2vec[token]
-        embed = torch.tensor(embed, dtype=torch.float32,
-            requires_grad=False, device=self.device)
-
-        embed, jacobian_loss = self.transform(embed)
+        token_id = tree.token["id"]
+        embed = embed_s[token_id-1]
 
         # (num_state)
         embed = embed.unsqueeze(0)
@@ -483,7 +492,7 @@ class DMVFlow(nn.Module):
             log_prob = log_prob + self.log_stop_left[1, :, 1]
         else:
             for i, l in enumerate(left[::-1]):
-                left_prob, jacob_ = self._calc_log_prob(l, constant)
+                left_prob, jacob_ = self._calc_log_prob(l, constant, embed_s)
                 jacobian_loss = jacobian_loss + jacob_
 
                 # (num_state, num_state) --> (num_state)
@@ -500,7 +509,7 @@ class DMVFlow(nn.Module):
             log_prob = log_prob + self.log_stop_right[1, :, 1]
         else:
             for i, r in enumerate(right):
-                right_prob, jacob_ = self._calc_log_prob(r, constant)
+                right_prob, jacob_ = self._calc_log_prob(r, constant, embed_s)
                 jacobian_loss = jacobian_loss + jacob_
 
                 # (num_state, num_state) --> (num_state)

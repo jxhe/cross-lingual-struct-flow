@@ -78,7 +78,7 @@ class NICETrans(nn.Module):
             getattr(self, name).init_identity()
 
 
-    def forward(self, input):
+    def forward(self, input, masks=None):
         """
         input: (seq_length, batch_size, features)
         h: (seq_length, batch_size, features)
@@ -100,4 +100,70 @@ class NICETrans(nn.Module):
                 h = torch.cat((h1, h2 + getattr(self, name)(h1)), dim=-1)
             else:
                 h = torch.cat((h1 + getattr(self, name)(h2), h2), dim=-1)
+        return h, jacobian_loss
+
+
+class LSTMNICE(nn.Module):
+    def __init__(self, n_lstm_layer, n_couple_layer, 
+                 n_relu_layer, n_hid_lstm, n_hid_nice, 
+                 n_emb, device):
+
+        super(LSTMNICE, self).__init__()
+        self.n_lstm_layer = n_lstm_layer
+        self.n_couple_layer = n_couple_layer
+        self.n_hid_lstm = n_hid_lstm
+        self.n_hid_nice = n_hid_nice
+        self.n_emb = n_emb
+        self.device = device
+
+        couple_layers = []
+        for _ in range(n_couple_layer):
+            couple_layers.append(ReLUNet(n_relu_layer, n_hid_nice, n_emb / 2 + n_hid_lstm, n_emb / 2))
+
+        self.couple_layers = nn.ModuleList(couple_layers)
+
+        self.lstm = nn.LSTM(input_size=n_emb,
+                            hidden_size=n_hid_lstm,
+                            num_layers=n_lstm_layer)
+
+        # embedding of start symbol
+        self.start_emb = nn.Parameter(torch.Tensor(n_emb).uniform_(-0.01, 0.01))
+
+    def forward(self, input, masks=None):
+        """
+        input: (seq_length, batch_size, features)
+        masks: (seq_length, batch_size)
+        output: (seq_length, batch_size, features)
+        """
+        jacobian_loss = torch.zeros(1, requires_grad=False,
+                                    device=self.device)
+
+        batch_size = input.size(1)
+        pad_start = self.start_emb.view(1, 1, self.n_emb).expand(1, batch_size, self.n_emb)
+        pad_input = torch.cat((pad_start, input), dim=0)
+
+        if masks is not None:
+            # consider the padded start
+            sents_len = (masks.sum(dim=0).data.long() + 1).tolist()
+            packed_input = pack_padded_sequence(pad_input, sents_len)
+        else:
+            packed_input = pad_input
+
+        # (seq_len + 1, batch_size, hidden_size)
+        output, _ = self.lstm(packed_input)
+
+        if masks is not None:
+            output, _ = pad_packed_sequence(output)
+
+        # (seq_len, batch_size, hidden_size)
+        output = output[:-1, :, :]
+        h = input
+        for i in range(self.n_couple_layer):
+            h1, h2 = torch.chunk(h, 2, dim=-1)
+            if i%2 == 0:
+                h = torch.cat((h1, h2 + self.couple_layers[i](torch.cat((h1, output), dim=-1))), dim=-1)
+            else:
+                h = torch.cat((h1 + self.couple_layers[i](torch.cat((h2, output), dim=-1)), h2), dim=-1)
+
+
         return h, jacobian_loss

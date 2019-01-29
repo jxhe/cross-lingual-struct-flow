@@ -31,7 +31,7 @@ def init_config():
     parser.add_argument('--lang', type=str, help='language')
 
     # model config
-    parser.add_argument('--model', choices=['gaussian', 'nice'], default='gaussian')
+    parser.add_argument('--model', choices=["gaussian", "nice", "lstmnice"], default='gaussian')
     parser.add_argument('--mode',
                          choices=['supervised_wpos', 'supervised_wopos', 'unsupervised', 'both', 'eval'],
                          default='supervised')
@@ -185,8 +185,8 @@ def main(args):
                                 batch_flag = False
                                 break
 
-                train_tree, num_words = train_data.trees[i].tree, train_data.trees[i].length
-                nll, jacobian_loss = model.supervised_loss_wopos(train_tree)
+                train_tree, embed = train_data.trees[i], train_data.embed[i]
+                nll, jacobian_loss = model.supervised_loss_wopos(train_tree, embed)
                 nll.backward()
 
                 if (cnt+1) % args.batch_size == 0:
