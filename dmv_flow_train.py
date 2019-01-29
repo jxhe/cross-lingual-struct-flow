@@ -95,9 +95,9 @@ def main(args):
     args.device = device
 
     if args.mode == "unsupervised":
-        train_max_len = 20
+        train_max_len = 1e3
     else:
-        train_max_len = 20
+        train_max_len = 1e3
 
     train_data = ConlluData(args.train_file, word_vec_dict,
             max_len=train_max_len, device=device,
@@ -105,9 +105,9 @@ def main(args):
     pos_to_id = train_data.pos_to_id
 
     val_data = ConlluData(args.val_file, word_vec_dict,
-            max_len=20, device=device, pos_to_id_dict=pos_to_id)
+            max_len=1e3, device=device, pos_to_id_dict=pos_to_id)
     test_data = ConlluData(args.test_file, word_vec_dict,
-            max_len=20, device=device, pos_to_id_dict=pos_to_id)
+            max_len=1e3, device=device, pos_to_id_dict=pos_to_id)
 
     num_dims = len(train_data.embed[0][0])
     print('complete reading data')
@@ -190,7 +190,7 @@ def main(args):
                 nll.backward()
 
                 if (cnt+1) % args.batch_size == 0:
-                    torcgh.nn.utils.clip_grad_norm_(model.proj_group, 5.0)
+                    torch.nn.utils.clip_grad_norm_(model.proj_group, 5.0)
                     prior_optimizer.step()
                     proj_optimizer.step()
 
@@ -214,7 +214,8 @@ def main(args):
             for iter_obj in train_data.data_iter(batch_size=args.batch_size):
                 _, batch_size = iter_obj.pos.size()
                 num_words = iter_obj.mask.sum().item()
-                optimizer.zero_grad()
+                prior_optimizer.zero_grad()
+                proj_optimizer.zero_grad()
 
                 sents, jacobian_loss = model.transform(iter_obj.embed)
                 sents = sents.transpose(0, 1)
@@ -231,7 +232,7 @@ def main(args):
                 avg_ll_loss.backward()
 
                 torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
-                optimizer.step()
+                proj_optimizer.step()
 
                 report_ll -= nll.item()
                 report_num_words += num_words

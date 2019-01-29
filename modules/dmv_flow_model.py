@@ -65,7 +65,7 @@ class DMVFlow(nn.Module):
 
         # Gaussian Variance
         self.var = Parameter(torch.zeros(num_dims, dtype=torch.float32))
-        # self.var.requires_grad = False
+        self.var.requires_grad = False
 
         # dim0 is head and dim1 is dependent
         self.attach_left = Parameter(torch.Tensor(self.num_state, self.num_state))
@@ -81,7 +81,7 @@ class DMVFlow(nn.Module):
 
         self.prior_group = [self.attach_left, self.attach_right, self.stop_left, self.stop_right, \
                             self.root_attach_left]
-        self.proj_group = list(self.proj_layer.parameters()) + [self.means]
+        self.proj_group = list(self.proj_layer.parameters()) + [self.means, self.var]
 
     def init_params(self, init_seed, train_data):
         """
@@ -242,13 +242,13 @@ class DMVFlow(nn.Module):
             try:
                 sents_t, _ = self.transform(iter_obj.embed)
                 sents_t = sents_t.transpose(0, 1)
-                masks = iter_obj.mask
                 # root_max_index: (batch_size, num_state, seq_length)
                 batch_size, seq_length, _ = sents_t.size()
                 symbol_index_t = self.attach_left.new([[[p, q] for q in range(seq_length)] \
                                                       for p in range(self.num_state)]) \
                                                       .expand(batch_size, self.num_state, seq_length, 2)
-                root_max_index = self.dep_parse(sents_t, masks, symbol_index_t)
+                root_max_index = self.dep_parse(sents_t, iter_obj, symbol_index_t)
+                masks = iter_obj.mask
                 batch_size = masks.size(1)
                 sent_len = [torch.sum(masks[:, i]).item() for i in range(batch_size)]
                 parse = self.tree_to_depset(root_max_index, sent_len)
@@ -258,9 +258,9 @@ class DMVFlow(nn.Module):
                 continue
 
             #TODO: check parse_s if follows original sentence order
-            for pos_s, gold_s, parse_s in zip(iter_obj.pos.transpose(0, 1),
-                    iter_obj.head.transpose(0, 1), parse):
-                directed, length = self.measures(pos_s, gold_s, parse_s)
+            for pos_s, gold_s, parse_s, len_ in zip(iter_obj.pos.transpose(0, 1),
+                    iter_obj.head.transpose(0, 1), parse, iter_obj.mask.sum(dim=0)):
+                directed, length = self.measures(pos_s, gold_s, parse_s, len_.item())
                 cnt += length
                 dir_cnt += directed
 
@@ -272,11 +272,14 @@ class DMVFlow(nn.Module):
 
         return dir_acu
 
-    def measures(self, pos_s, gold_s, parse_s):
+    def measures(self, pos_s, gold_s, parse_s, len_):
         # Helper for eval().
         d = 0.
         l = 0.
-        for pos, head, tuple_ in zip(pos_s, gold_s, parse_s):
+        for i in range(int(len_)):
+            pos = pos_s[i]
+            head = gold_s[i]
+            tuple_ = parse_s[i]
             if pos.item() not in self.punc_sym:
                 l += 1
                 if head.item() == tuple_[1]:
@@ -766,13 +769,16 @@ class DMVFlow(nn.Module):
         return -torch.sum(log_sum_exp(log_root.view(batch_size, -1), dim=1))
 
 
-    def dep_parse(self, sents, masks, symbol_index_t):
+    def dep_parse(self, sents, iter_obj, symbol_index_t):
         """
         Args:
             sents: tensor with size (batch_size, seq_length, features)
         Returns:
             returned t is a nltk.tree.Tree without root node
         """
+
+        masks = iter_obj.mask
+        gold_pos = iter_obj.pos
 
         # normalizing parameters
         self.log_attach_left = log_softmax(self.attach_left, dim=1)
@@ -784,6 +790,15 @@ class DMVFlow(nn.Module):
 
         # (batch_size, seq_length, num_state)
         density = self._eval_log_density(sents)
+
+        # evaluate with gold pos tag
+        # batch_size, seq_len, _ = sents.size()
+        # density = torch.zeros((batch_size, seq_len, self.num_state), device=self.device,
+        #         requires_grad=False).fill_(NEG_INFINITY)
+        # for b in range(batch_size):
+        #     for s in range(seq_len):
+        #         density[b, s, gold_pos[s, b]] = 0.
+
 
 
         # in the parse case, log_p_parse[i, j, mark] is not the log prob
