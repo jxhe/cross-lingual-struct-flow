@@ -89,15 +89,14 @@ class MarkovFlow(nn.Module):
         if self.args.load_nice != '':
             self.load_state_dict(torch.load(self.args.load_nice), strict=False)
 
-            if self.args.beta != 0:
-                self.means_init = self.means.clone()
-                self.tparams_init = self.tparams.clone()
-                self.proj_init = [param.clone() for param in self.nice_layer.parameters()]
+            self.means_init = self.means.clone()
+            self.tparams_init = self.tparams.clone()
+            self.proj_init = [param.clone() for param in self.nice_layer.parameters()]
 
-                # self.means_init.requires_grad = False
-                # self.tparams_init.requires_grad = False
-                # for tensor in self.proj_init:
-                #     tensor.requires_grad = False
+            # self.means_init.requires_grad = False
+            # self.tparams_init.requires_grad = False
+            # for tensor in self.proj_init:
+            #     tensor.requires_grad = False
 
             return
 

@@ -79,10 +79,9 @@ class ConlluData(object):
         self.pos_to_id = pos_to_id
         self.id_to_pos = {v:k for (k, v) in pos_to_id.items()}
         self.length = len(self.text)
-        self.trees = None
 
         self.text_to_embed(embed)
-        
+
         fin.close()
         fin_tree.close()
 

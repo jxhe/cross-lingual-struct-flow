@@ -4,6 +4,7 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.nn.utils.rnn import pad_packed_sequence, pack_padded_sequence
 
 
 class ReLUNet(nn.Module):
@@ -104,8 +105,8 @@ class NICETrans(nn.Module):
 
 
 class LSTMNICE(nn.Module):
-    def __init__(self, n_lstm_layer, n_couple_layer, 
-                 n_relu_layer, n_hid_lstm, n_hid_nice, 
+    def __init__(self, n_lstm_layer, n_couple_layer,
+                 n_relu_layer, n_hid_lstm, n_hid_nice,
                  n_emb, device):
 
         super(LSTMNICE, self).__init__()
@@ -118,7 +119,7 @@ class LSTMNICE(nn.Module):
 
         couple_layers = []
         for _ in range(n_couple_layer):
-            couple_layers.append(ReLUNet(n_relu_layer, n_hid_nice, n_emb / 2 + n_hid_lstm, n_emb / 2))
+            couple_layers.append(ReLUNet(n_relu_layer, n_hid_nice, n_emb // 2 + n_hid_lstm, n_emb // 2))
 
         self.couple_layers = nn.ModuleList(couple_layers)
 

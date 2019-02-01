@@ -74,7 +74,9 @@ class DMVFlow(nn.Module):
 
         # Gaussian Variance
         self.var = Parameter(torch.zeros(num_dims, dtype=torch.float32))
-        self.var.requires_grad = False
+
+        if not self.args.train_var:
+            self.var.requires_grad = False
 
         # dim0 is head and dim1 is dependent
         self.attach_left = Parameter(torch.Tensor(self.num_state, self.num_state))
@@ -90,7 +92,11 @@ class DMVFlow(nn.Module):
 
         self.prior_group = [self.attach_left, self.attach_right, self.stop_left, self.stop_right, \
                             self.root_attach_left]
-        self.proj_group = list(self.proj_layer.parameters()) + [self.means, self.var]
+
+        if args.model == "gaussian":
+            self.proj_group = [self.means, self.var]
+        else:
+            self.proj_group = list(self.proj_layer.parameters()) + [self.means, self.var]
 
     def init_params(self, init_seed, train_data):
         """
@@ -123,7 +129,7 @@ class DMVFlow(nn.Module):
         self.stop_left[0, :, 1].uniform_().add_(2)
         self.stop_left[1, :, 1].uniform_().add_(1)
 
-        self.var.uniform_()
+        self.var.uniform_(0.5, 1.5)
 
         # initialize mean and variance with empirical values
         sents = init_seed.embed
@@ -164,14 +170,14 @@ class DMVFlow(nn.Module):
             self.means[i] = emb_dict[i] / cnt_dict[i]
 
 
-    def transform(self, x, masks):
+    def transform(self, x, masks=None):
         """
         Args:
             x: (sent_length, batch_size, num_dims)
         """
         jacobian_loss = torch.zeros(1, device=self.device, requires_grad=False)
 
-        if self.args.model == 'nice':
+        if self.args.model != 'gaussian':
             x, jacobian_loss_new = self.proj_layer(x, masks)
             jacobian_loss = jacobian_loss + jacobian_loss_new
 
@@ -431,20 +437,22 @@ class DMVFlow(nn.Module):
 
         """
         # normalizing parameters
-        self.log_attach_left = log_softmax(self.attach_left, dim=1)
-        self.log_attach_right = log_softmax(self.attach_right, dim=1)
-        self.log_stop_right = log_softmax(self.stop_right, dim=0)
-        self.log_stop_left = log_softmax(self.stop_left, dim=0)
-        self.log_root_attach_left = log_softmax(self.root_attach_left, dim=0)
+        self.log_attach_left = self.args.prob_const * log_softmax(self.attach_left, dim=1)
+        self.log_attach_right = self.args.prob_const * log_softmax(self.attach_right, dim=1)
+        self.log_stop_right = self.args.prob_const * log_softmax(self.stop_right, dim=0)
+        self.log_stop_left = self.args.prob_const * log_softmax(self.stop_left, dim=0)
+        self.log_root_attach_left = self.args.prob_const * log_softmax(self.root_attach_left, dim=0)
 
         constant = -self.num_dims/2.0 * (math.log(2 * math.pi)) - \
                 0.5 * torch.sum(torch.log(self.var))
 
         # (seq_len, num_dims)
         embed_t = torch.tensor(embed, dtype=torch.float32, requires_grad=False, device=self.device)
-        embed_t = self.transform(embed_t.unsqueeze(1)).squeeze(1)
+        embed_t, jacob = self.transform(embed_t.unsqueeze(1))
+        embed_t = embed_t.squeeze(1)
+
         # (num_state)
-        log_prob, jacob = self._calc_log_prob(tree, constant, embed)
+        log_prob = self._calc_log_prob(tree, constant, embed_t)
 
         log_prob = self.log_root_attach_left + log_prob
 
@@ -474,7 +482,7 @@ class DMVFlow(nn.Module):
 
         # leaf nodes
         if tree.children == []:
-            return log_prob, jacobian_loss
+            return log_prob
 
 
         left = []
@@ -492,8 +500,7 @@ class DMVFlow(nn.Module):
             log_prob = log_prob + self.log_stop_left[1, :, 1]
         else:
             for i, l in enumerate(left[::-1]):
-                left_prob, jacob_ = self._calc_log_prob(l, constant, embed_s)
-                jacobian_loss = jacobian_loss + jacob_
+                left_prob = self._calc_log_prob(l, constant, embed_s)
 
                 # (num_state, num_state) --> (num_state)
                 left_prob = self.log_attach_left + left_prob.unsqueeze(0)
@@ -509,8 +516,7 @@ class DMVFlow(nn.Module):
             log_prob = log_prob + self.log_stop_right[1, :, 1]
         else:
             for i, r in enumerate(right):
-                right_prob, jacob_ = self._calc_log_prob(r, constant, embed_s)
-                jacobian_loss = jacobian_loss + jacob_
+                right_prob = self._calc_log_prob(r, constant, embed_s)
 
                 # (num_state, num_state) --> (num_state)
                 right_prob = self.log_attach_right + right_prob.unsqueeze(0)
@@ -521,7 +527,7 @@ class DMVFlow(nn.Module):
 
             log_prob = log_prob + self.log_stop_right[1, :, 0]
 
-        return log_prob, jacobian_loss
+        return log_prob
 
     # def supervised_loss(self, sents, iter_obj):
 
@@ -790,11 +796,11 @@ class DMVFlow(nn.Module):
         gold_pos = iter_obj.pos
 
         # normalizing parameters
-        self.log_attach_left = log_softmax(self.attach_left, dim=1)
-        self.log_attach_right = log_softmax(self.attach_right, dim=1)
-        self.log_stop_right = log_softmax(self.stop_right, dim=0)
-        self.log_stop_left = log_softmax(self.stop_left, dim=0)
-        self.log_root_attach_left = log_softmax(self.root_attach_left, dim=0)
+        self.log_attach_left = self.args.prob_const * log_softmax(self.attach_left, dim=1)
+        self.log_attach_right = self.args.prob_const * log_softmax(self.attach_right, dim=1)
+        self.log_stop_right = self.args.prob_const * log_softmax(self.stop_right, dim=0)
+        self.log_stop_left = self.args.prob_const * log_softmax(self.stop_left, dim=0)
+        self.log_root_attach_left = self.args.prob_const * log_softmax(self.root_attach_left, dim=0)
 
 
         # (batch_size, seq_length, num_state)

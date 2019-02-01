@@ -37,9 +37,13 @@ def init_config():
                          default='supervised')
 
     # optimization params
-    parser.add_argument('--opt', choices=['adam', 'sgd'], default='adam')
+    parser.add_argument('--proj_opt', choices=['adam', 'sgd'], default='adam')
+    parser.add_argument('--prior_opt', choices=['adam', 'sgd', "lbfgs"], default='adam')
     parser.add_argument('--prior_lr', type=float, default=0.001)
     parser.add_argument('--proj_lr', type=float, default=0.001)
+    parser.add_argument('--prob_const', type=float, default=1.0)
+    parser.add_argument('--train_var', action="store_true", default=False)
+
 
     # pretrained model options
     parser.add_argument('--load_nice', default='', type=str,
@@ -95,9 +99,9 @@ def main(args):
     args.device = device
 
     if args.mode == "unsupervised":
-        train_max_len = 1e3
+        train_max_len = 10
     else:
-        train_max_len = 1e3
+        train_max_len = 10
 
     train_data = ConlluData(args.train_file, word_vec_dict,
             max_len=train_max_len, device=device,
@@ -105,9 +109,9 @@ def main(args):
     pos_to_id = train_data.pos_to_id
 
     val_data = ConlluData(args.val_file, word_vec_dict,
-            max_len=1e3, device=device, pos_to_id_dict=pos_to_id)
+            max_len=10, device=device, pos_to_id_dict=pos_to_id)
     test_data = ConlluData(args.test_file, word_vec_dict,
-            max_len=1e3, device=device, pos_to_id_dict=pos_to_id)
+            max_len=10, device=device, pos_to_id_dict=pos_to_id)
 
     num_dims = len(train_data.embed[0][0])
     print('complete reading data')
@@ -130,16 +134,34 @@ def main(args):
 
     opt_dict = {"not_improved": 0, "lr": 0., "best_score": 0}
 
-    if args.opt == "adam":
+    if args.prior_opt == "adam":
         prior_optimizer = torch.optim.Adam(model.prior_group, lr=args.prior_lr)
-        proj_optimizer = torch.optim.Adam(model.proj_group, lr=args.proj_lr)
-        opt_dict["lr"] = 1.
-    elif args.opt == "sgd":
-        prior_optimizer = torch.optim.SGD(model.prior_group, lr=1.)
-        proj_optimizer = torch.optim.SGD(model. proj_group, lr=1.)
-        opt_dict["lr"] = 1.
+    elif args.prior_opt == "sgd":
+        prior_optimizer = torch.optim.SGD(model.prior_group, lr=args.prior_lr)
+    elif args.prior_opt == "lbfgs":
+        optimizer = torch.optim.LBFGS(model.parameters(), lr=args.prior_lr)
     else:
-        raise ValueError("{} is not supported".format(args.opt))
+        raise ValueError("{} is not supported".format(args.prior_opt))
+
+    if args.proj_opt == "adam":
+        proj_optimizer = torch.optim.Adam(model.proj_group, lr=args.proj_lr)
+    elif args.proj_opt == "sgd":
+        proj_optimizer = torch.optim.SGD(model.proj_group, lr=args.proj_lr)
+    elif args.proj_opt == "lbfgs":
+        proj_optimizer = torch.optim.LBFGS(model.proj_group, lr=args.proj_lr)
+    else:
+        raise ValueError("{} is not supported".format(args.proj_opt))
+
+    # if args.opt == "adam":
+    #     prior_optimizer = torch.optim.Adam(model.prior_group, lr=args.prior_lr)
+    #     proj_optimizer = torch.optim.Adam(model.proj_group, lr=args.proj_lr)
+    #     opt_dict["lr"] = 1.
+    # elif args.opt == "sgd":
+    #     prior_optimizer = torch.optim.SGD(model.prior_group, lr=1.)
+    #     proj_optimizer = torch.optim.SGD(model. proj_group, lr=1.)
+    #     opt_dict["lr"] = 1.
+    # else:
+    #     raise ValueError("{} is not supported".format(args.opt))
 
     log_niter = (train_data.length//args.batch_size)//5
     # log_niter = 20
@@ -163,51 +185,77 @@ def main(args):
     batch_flag = False
 
     for epoch in range(args.epochs):
-        report_ll = report_num_sents = report_num_words = 0
+        report_ll = [0]
+        report_num_sents = [0]
+        report_num_words = [0]
         if args.mode == "supervised_wopos":
-            prior_optimizer.zero_grad()
-            proj_optimizer.zero_grad()
-            for cnt, i in enumerate(np.random.permutation(len(train_data.trees))):
-                if batch_flag:
-                    sub_iter = 0
-                    for sub_cnt, sub_id in enumerate(np.random.permutation(len(train_data.trees))):
-                        train_tree, num_words = train_data.trees[sub_id].tree, train_data.trees[sub_id].length
-                        nll, jacobian_loss = model.supervised_loss_wopos(train_tree)
+            # prior_optimizer.zero_grad()
+            # proj_optimizer.zero_grad()
+            id_l = np.random.permutation(len(train_data.trees))
+            loc = 0
+            cnt = 0
+            while loc <= len(train_data.trees):
+                end = min(len(train_data.trees), loc + args.batch_size)
+                iter_tree = [train_data.trees[i] for i in range(loc, end)]
+                iter_embed = [train_data.embed[i] for i in range(loc, end)]
+                loc += args.batch_size
+                num_words = sum(len(embed) for embed in iter_embed)
+                def closure():
+                    optimizer.zero_grad()
+                    res = torch.zeros([], device=device, requires_grad=False)
+                    for tree, embed in zip(iter_tree, iter_embed):
+                        nll, jacobian_loss = model.supervised_loss_wopos(tree, embed)
+                        report_ll[0] -= nll.item()
+                        report_num_sents[0] += 1
                         nll.backward()
+                        res = res + nll
 
-                        if (sub_cnt+1) % args.batch_size == 0:
-                            prior_optimizer.step()
+                    return res
+                optimizer.step(closure)
+                cnt += 1
+            # for cnt, i in enumerate(np.random.permutation(len(train_data.trees))):
+                # if batch_flag:
+                #     sub_iter = 0
+                #     for sub_cnt, sub_id in enumerate(np.random.permutation(len(train_data.trees))):
+                #         train_tree, num_words = train_data.trees[sub_id].tree, train_data.trees[sub_id].length
+                #         nll, jacobian_loss = model.supervised_loss_wopos(train_tree)
+                #         nll.backward()
 
-                            prior_optimizer.zero_grad()
-                            proj_optimizer.zero_grad()
-                            sub_iter += 1
-                            if sub_iter > 10:
-                                batch_flag = False
-                                break
+                #         if (sub_cnt+1) % args.batch_size == 0:
+                #             prior_optimizer.step()
 
-                train_tree, embed = train_data.trees[i], train_data.embed[i]
-                nll, jacobian_loss = model.supervised_loss_wopos(train_tree, embed)
-                nll.backward()
+                #             prior_optimizer.zero_grad()
+                #             proj_optimizer.zero_grad()
+                #             sub_iter += 1
+                #             if sub_iter > 10:
+                #                 batch_flag = False
+                #                 break
 
-                if (cnt+1) % args.batch_size == 0:
-                    torch.nn.utils.clip_grad_norm_(model.proj_group, 5.0)
-                    prior_optimizer.step()
-                    proj_optimizer.step()
+                # train_tree, embed = train_data.trees[i], train_data.embed[i]
+                # num_words = len(embed)
 
-                    prior_optimizer.zero_grad()
-                    proj_optimizer.zero_grad()
+                # nll, jacobian_loss = model.supervised_loss_wopos(train_tree, embed)
+                # nll.backward()
+
+                # if (cnt+1) % args.batch_size == 0:
+                #     torch.nn.utils.clip_grad_norm_(model.proj_group, 5.0)
+                #     prior_optimizer.step()
+                #     proj_optimizer.step()
+
+                #     prior_optimizer.zero_grad()
+                #     proj_optimizer.zero_grad()
                     # batch_flag = True
 
 
-                report_ll -= nll.item()
-                report_num_words += num_words
-                report_num_sents += 1
+                # report_ll -= nll.item()
+                report_num_words[0] += num_words
+                # report_num_sents += 1
 
-                if cnt % (log_niter * args.batch_size) == 0:
+                if cnt % log_niter == 0:
                     print('epoch %d, sent %d, ll_per_sent %.4f, ll_per_word %.4f, ' \
                           'max_var %.4f, min_var %.4f time elapsed %.2f sec' % \
-                          (epoch, cnt, report_ll / report_num_sents, \
-                          report_ll / report_num_words, model.var.data.max(), \
+                          (epoch, cnt, report_ll[0] / report_num_sents[0], \
+                          report_ll[0] / report_num_words[0], model.var.data.max(), \
                           model.var.data.min(), time.time() - begin_time), file=sys.stderr)
 
         else:
@@ -217,7 +265,7 @@ def main(args):
                 prior_optimizer.zero_grad()
                 proj_optimizer.zero_grad()
 
-                sents, jacobian_loss = model.transform(iter_obj.embed)
+                sents, jacobian_loss = model.transform(iter_obj.embed, iter_obj.mask)
                 sents = sents.transpose(0, 1)
 
                 if args.mode == "unsupervised":
@@ -250,35 +298,45 @@ def main(args):
 
                 train_iter += 1
 
-        print("\nTRAIN epoch {}: ll_per_sent: {:.4f}, ll_per_word: {:.4f}\n".format(
-            epoch, report_ll / report_num_sents, report_ll / report_num_words))
+        # print("\nTRAIN epoch {}: ll_per_sent: {:.4f}, ll_per_word: {:.4f}\n".format(
+        #     epoch, report_ll / report_num_sents, report_ll / report_num_words))
 
-        if args.mode == "supervised_wpos" or args.mode == "supervised_wopos":
+        if epoch % 3 == 0:
             with torch.no_grad():
-                acc = model.test(val_data)
-                print('\nDEV: *****epoch {}, iter {}, acc {}*****\n'.format(
+                # acc = model.test(train_data)
+                # print('\nTRAIN: *****epoch {}, iter {}, acc {}*****\n'.format(
+                #     epoch, train_iter, acc))
+                acc = model.test(test_data)
+                print('\nTEST: *****epoch {}, iter {}, acc {}*****\n'.format(
                     epoch, train_iter, acc))
+        # if args.mode == "supervised_wpos" or args.mode == "supervised_wopos":
+        #     with torch.no_grad():
+        #         acc = model.test(val_data)
+        #         print('\nDEV: *****epoch {}, iter {}, acc {}*****\n'.format(
+        #             epoch, train_iter, acc))
 
-            if acc > opt_dict["best_score"]:
-                opt_dict["best_score"] = acc
-                opt_dict["not_improved"] = 0
-                torch.save(model.state_dict(), args.save_path)
-            else:
-                opt_dict["not_improved"] += 1
-                if opt_dict["not_improved"] >= 5:
-                    opt_dict["best_score"] = acc
-                    opt_dict["not_improved"] = 0
-                    opt_dict["lr"] = opt_dict["lr"] * lr_decay
-                    model.load_state_dict(torch.load(args.save_path))
-                    print("new lr decay: {}".format(opt_dict["lr"]))
-                    if args.opt == "adam":
-                        prior_optimizer = torch.optim.Adam(model.prior_group, lr=opt_dict["lr"] * args.prior_lr)
-                        proj_optimizer = torch.optim.Adam(model.proj_group, lr=opt_dict["lr"] * args.proj_lr)
-                    elif args.opt == "sgd":
-                        prior_optimizer = torch.optim.SGD(model.prior_group, lr=opt_dict["lr"] * args.prior_lr)
-                        proj_optimizer = torch.optim.SGD(model. proj_group, lr=opt_dict["lr"] * args.proj_lr)
-        else:
-            torch.save(model.state_dict(), args.save_path)
+        #     if acc > opt_dict["best_score"]:
+        #         opt_dict["best_score"] = acc
+        #         opt_dict["not_improved"] = 0
+        #         torch.save(model.state_dict(), args.save_path)
+        #     else:
+        #         opt_dict["not_improved"] += 1
+        #         if opt_dict["not_improved"] >= 5:
+        #             opt_dict["best_score"] = acc
+        #             opt_dict["not_improved"] = 0
+        #             opt_dict["lr"] = opt_dict["lr"] * lr_decay
+        #             model.load_state_dict(torch.load(args.save_path))
+        #             print("new lr decay: {}".format(opt_dict["lr"]))
+        #             if args.opt == "adam":
+        #                 prior_optimizer = torch.optim.Adam(model.prior_group, lr=opt_dict["lr"] * args.prior_lr)
+        #                 proj_optimizer = torch.optim.Adam(model.proj_group, lr=opt_dict["lr"] * args.proj_lr)
+        #             elif args.opt == "sgd":
+        #                 prior_optimizer = torch.optim.SGD(model.prior_group, lr=opt_dict["lr"] * args.prior_lr)
+        #                 proj_optimizer = torch.optim.SGD(model. proj_group, lr=opt_dict["lr"] * args.proj_lr)
+        # else:
+        #     torch.save(model.state_dict(), args.save_path)
+
+        torch.save(model.state_dict(), args.save_path)
 
     torch.save(model.state_dict(), args.save_path)
 

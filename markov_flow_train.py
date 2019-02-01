@@ -231,8 +231,8 @@ def main(args):
 
             avg_ll_loss = (nll + jacobian_loss)/batch_size
 
-            # if args.beta > 0:
-            #     avg_ll_loss = avg_ll_loss + model.MLE_loss()
+            if args.beta > 0:
+                avg_ll_loss = avg_ll_loss + model.MLE_loss()
                 # avg_ll_loss = model.MLE_loss()
 
             avg_ll_loss.backward()
