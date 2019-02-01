@@ -43,6 +43,10 @@ def init_config():
     parser.add_argument('--proj_lr', type=float, default=0.001)
     parser.add_argument('--prob_const', type=float, default=1.0)
     parser.add_argument('--train_var', action="store_true", default=False)
+    parser.add_argument('--freeze_prior', action="store_true", default=False)
+    parser.add_argument('--freeze_proj', action="store_true", default=False)
+    parser.add_argument('--freeze_mean', action="store_true", default=False)
+
 
 
     # pretrained model options
@@ -191,59 +195,59 @@ def main(args):
         if args.mode == "supervised_wopos":
             # prior_optimizer.zero_grad()
             # proj_optimizer.zero_grad()
-            id_l = np.random.permutation(len(train_data.trees))
-            loc = 0
-            cnt = 0
-            while loc <= len(train_data.trees):
-                end = min(len(train_data.trees), loc + args.batch_size)
-                iter_tree = [train_data.trees[i] for i in range(loc, end)]
-                iter_embed = [train_data.embed[i] for i in range(loc, end)]
-                loc += args.batch_size
-                num_words = sum(len(embed) for embed in iter_embed)
-                def closure():
-                    optimizer.zero_grad()
-                    res = torch.zeros([], device=device, requires_grad=False)
-                    for tree, embed in zip(iter_tree, iter_embed):
-                        nll, jacobian_loss = model.supervised_loss_wopos(tree, embed)
-                        report_ll[0] -= nll.item()
-                        report_num_sents[0] += 1
+            # id_l = np.random.permutation(len(train_data.trees))
+            # loc = 0
+            # cnt = 0
+            # while loc <= len(train_data.trees):
+            #     end = min(len(train_data.trees), loc + args.batch_size)
+            #     iter_tree = [train_data.trees[i] for i in range(loc, end)]
+            #     iter_embed = [train_data.embed[i] for i in range(loc, end)]
+            #     loc += args.batch_size
+            #     num_words = sum(len(embed) for embed in iter_embed)
+            #     def closure():
+            #         optimizer.zero_grad()
+            #         res = torch.zeros([], device=device, requires_grad=False)
+            #         for tree, embed in zip(iter_tree, iter_embed):
+            #             nll, jacobian_loss = model.supervised_loss_wopos(tree, embed)
+            #             report_ll[0] -= nll.item()
+            #             report_num_sents[0] += 1
+            #             nll.backward()
+            #             res = res + nll
+
+            #         return res
+            #     optimizer.step(closure)
+            #     cnt += 1
+            for cnt, i in enumerate(np.random.permutation(len(train_data.trees))):
+                if batch_flag:
+                    sub_iter = 0
+                    for sub_cnt, sub_id in enumerate(np.random.permutation(len(train_data.trees))):
+                        train_tree, num_words = train_data.trees[sub_id].tree, train_data.trees[sub_id].length
+                        nll, jacobian_loss = model.supervised_loss_wopos(train_tree)
                         nll.backward()
-                        res = res + nll
 
-                    return res
-                optimizer.step(closure)
-                cnt += 1
-            # for cnt, i in enumerate(np.random.permutation(len(train_data.trees))):
-                # if batch_flag:
-                #     sub_iter = 0
-                #     for sub_cnt, sub_id in enumerate(np.random.permutation(len(train_data.trees))):
-                #         train_tree, num_words = train_data.trees[sub_id].tree, train_data.trees[sub_id].length
-                #         nll, jacobian_loss = model.supervised_loss_wopos(train_tree)
-                #         nll.backward()
+                        if (sub_cnt+1) % args.batch_size == 0:
+                            prior_optimizer.step()
 
-                #         if (sub_cnt+1) % args.batch_size == 0:
-                #             prior_optimizer.step()
+                            prior_optimizer.zero_grad()
+                            proj_optimizer.zero_grad()
+                            sub_iter += 1
+                            if sub_iter > 10:
+                                batch_flag = False
+                                break
 
-                #             prior_optimizer.zero_grad()
-                #             proj_optimizer.zero_grad()
-                #             sub_iter += 1
-                #             if sub_iter > 10:
-                #                 batch_flag = False
-                #                 break
+                train_tree, embed = train_data.trees[i], train_data.embed[i]
+                num_words = len(embed)
 
-                # train_tree, embed = train_data.trees[i], train_data.embed[i]
-                # num_words = len(embed)
+                nll, jacobian_loss = model.supervised_loss_wopos(train_tree, embed)
+                nll.backward()
 
-                # nll, jacobian_loss = model.supervised_loss_wopos(train_tree, embed)
-                # nll.backward()
+                if (cnt+1) % args.batch_size == 0:
+                    torch.nn.utils.clip_grad_norm_(model.proj_group, 5.0)
+                    prior_optimizer.step()
+                    proj_optimizer.step()
 
-                # if (cnt+1) % args.batch_size == 0:
-                #     torch.nn.utils.clip_grad_norm_(model.proj_group, 5.0)
-                #     prior_optimizer.step()
-                #     proj_optimizer.step()
-
-                #     prior_optimizer.zero_grad()
-                #     proj_optimizer.zero_grad()
+                    prior_optimizer.zero_grad()
+                    proj_optimizer.zero_grad()
                     # batch_flag = True
 
 

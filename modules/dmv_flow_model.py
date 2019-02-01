@@ -47,7 +47,7 @@ class DMVFlow(nn.Module):
         self.device = args.device
 
         self.hidden_units = num_dims // 2
-        self.lstm_hidden_units = self.hidden_units
+        self.lstm_hidden_units = num_dims
 
         self.punc_sym = punc_sym
         self.word2vec = word_vec_dict
@@ -97,6 +97,17 @@ class DMVFlow(nn.Module):
             self.proj_group = [self.means, self.var]
         else:
             self.proj_group = list(self.proj_layer.parameters()) + [self.means, self.var]
+
+        if self.args.freeze_prior:
+            for x in self.prior_group:
+                x.requires_grad = False
+
+        if self.args.freeze_proj:
+            for param in self.proj_layer.parameters():
+                param.requires_grad = False
+
+        if self.args.freeze_mean:
+            self.means.requires_grad = False
 
     def init_params(self, init_seed, train_data):
         """
