@@ -167,4 +167,4 @@ class LSTMNICE(nn.Module):
                 h = torch.cat((h1 + self.couple_layers[i](torch.cat((h2, output), dim=-1)), h2), dim=-1)
 
 
-        return h, jacobian_loss
+        return h + output, jacobian_loss

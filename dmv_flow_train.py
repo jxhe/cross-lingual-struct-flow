@@ -42,6 +42,7 @@ def init_config():
     parser.add_argument('--prior_lr', type=float, default=0.001)
     parser.add_argument('--proj_lr', type=float, default=0.001)
     parser.add_argument('--prob_const', type=float, default=1.0)
+    parser.add_argument('--max_len', type=int, default=10)
     parser.add_argument('--train_var', action="store_true", default=False)
     parser.add_argument('--freeze_prior', action="store_true", default=False)
     parser.add_argument('--freeze_proj', action="store_true", default=False)
@@ -103,9 +104,9 @@ def main(args):
     args.device = device
 
     if args.mode == "unsupervised":
-        train_max_len = 10
+        train_max_len = 20
     else:
-        train_max_len = 10
+        train_max_len = args.max_len
 
     train_data = ConlluData(args.train_file, word_vec_dict,
             max_len=train_max_len, device=device,
@@ -113,9 +114,9 @@ def main(args):
     pos_to_id = train_data.pos_to_id
 
     val_data = ConlluData(args.val_file, word_vec_dict,
-            max_len=10, device=device, pos_to_id_dict=pos_to_id)
+            max_len=args.max_len, device=device, pos_to_id_dict=pos_to_id)
     test_data = ConlluData(args.test_file, word_vec_dict,
-            max_len=10, device=device, pos_to_id_dict=pos_to_id)
+            max_len=args.max_len, device=device, pos_to_id_dict=pos_to_id)
 
     num_dims = len(train_data.embed[0][0])
     print('complete reading data')
@@ -180,10 +181,14 @@ def main(args):
 
     best_acc = 0.
 
-    if args.mode == "supervised_wpos":
-        print("set DMV paramters directly")
-        with torch.no_grad():
-            model.set_dmv_params(train_data)
+    # if args.mode == "supervised_wpos":
+    print("set DMV paramters directly")
+    with torch.no_grad():
+        model.set_dmv_params(train_data)
+
+    with torch.no_grad():
+        acc = model.test(test_data)
+        print('\nSTARTING TEST: *****acc {}*****\n'.format(acc))
 
     print("begin training")
     batch_flag = False
@@ -251,11 +256,11 @@ def main(args):
                     # batch_flag = True
 
 
-                # report_ll -= nll.item()
+                report_ll[0] -= nll.item()
                 report_num_words[0] += num_words
-                # report_num_sents += 1
+                report_num_sents[0] += 1
 
-                if cnt % log_niter == 0:
+                if cnt % (log_niter * args.batch_size) == 0:
                     print('epoch %d, sent %d, ll_per_sent %.4f, ll_per_word %.4f, ' \
                           'max_var %.4f, min_var %.4f time elapsed %.2f sec' % \
                           (epoch, cnt, report_ll[0] / report_num_sents[0], \

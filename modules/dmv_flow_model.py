@@ -260,6 +260,8 @@ class DMVFlow(nn.Module):
         memory_sent_cnt = 0
 
         batch_id_ = 0
+        if self.args.max_len > 20:
+            batch_size = 3
 
         for iter_obj in test_data.data_iter(batch_size=batch_size,
                                             shuffle=False):
