@@ -157,7 +157,7 @@ class DMVFlow(nn.Module):
                              ((flat_sents - seed_mean.expand_as(flat_sents)) ** 2),
                              dim=0) / masks.sum()
 
-        self.var.copy_(seed_var)
+        self.var.copy_(2 * seed_var)
         self.init_mean(train_data)
 
     def init_mean(self, train_data):
@@ -374,8 +374,8 @@ class DMVFlow(nn.Module):
 
         if pos_seq is None:
             pos_seq = train_data.postags
-            
-        for pos_s, head_s, left_s, right_s in zip(train_data.postags,
+
+        for pos_s, head_s, left_s, right_s in zip(pos_seq,
                                                   train_data.heads,
                                                   train_data.left_num_deps,
                                                   train_data.right_num_deps):
@@ -553,7 +553,7 @@ class DMVFlow(nn.Module):
         all the paramters and gold tree structures
 
         Return: List1
-            
+
             List1: a list of decoded pos tag ids, format is like
                    train_data.pos
         """
