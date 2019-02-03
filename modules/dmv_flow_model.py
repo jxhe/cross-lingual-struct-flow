@@ -58,6 +58,8 @@ class DMVFlow(nn.Module):
 
         self.harmonic = False
 
+        self.total_dims = self.num_dims + args.pos_emb_dim
+
         if args.pos_emb_dim > 0:
             self.pos_embed = nn.Embedding(num_state, self.pos_emb_dim)
             self.proj_group = list(self.pos_embed.parameters())
@@ -81,7 +83,7 @@ class DMVFlow(nn.Module):
 
 
         # Gaussian Variance
-        self.var = Parameter(torch.zeros(num_dims + args.pos_emb_dim, dtype=torch.float32))
+        self.var = Parameter(torch.zeros((num_state, num_dims + args.pos_emb_dim), dtype=torch.float32))
 
         if not self.args.train_var:
             self.var.requires_grad = False
@@ -168,11 +170,11 @@ class DMVFlow(nn.Module):
                              ((flat_sents - seed_mean.expand_as(flat_sents)) ** 2),
                              dim=0) / masks.sum()
 
-        self.var.copy_(2 * seed_var)
+        # self.var.copy_(2 * seed_var)
         self.init_mean(train_data)
+        self.init_var(train_data)
 
     def init_mean(self, train_data):
-        pad = np.zeros(self.num_dims)
         emb_dict = {}
         cnt_dict = Counter()
         for iter_obj in train_data.data_iter(self.args.batch_size):
@@ -184,7 +186,7 @@ class DMVFlow(nn.Module):
             if self.args.pos_emb_dim > 0:
                 pos_embed_t = self.pos_embed(pos_t)
                 sents_t = torch.cat((sents_t, pos_embed_t), dim=-1)
-                
+
             for emb_s, tagid_s, mask_s in zip(sents_t, pos_t, mask_t):
                 for tagid, emb, mask in zip(tagid_s, emb_s, mask_s):
                     tagid = tagid.item()
@@ -192,13 +194,40 @@ class DMVFlow(nn.Module):
                     if tagid in emb_dict:
                         emb_dict[tagid] = emb_dict[tagid] + emb * mask
                     else:
-                        emb_dict[tagid] = emb
+                        emb_dict[tagid] = emb * mask
 
                     cnt_dict[tagid] += mask
 
-        for i in range(self.num_state):
-            self.means[i] = emb_dict[i] / cnt_dict[i]
+        for tagid in emb_dict:
+            self.means[tagid] = emb_dict[tagid] / cnt_dict[tagid]
 
+    def init_var(self, train_data):
+        emb_dict = {}
+        cnt_dict = Counter()
+        for iter_obj in train_data.data_iter(self.args.batch_size):
+            sents_t, _ = self.transform(iter_obj.embed, iter_obj.mask)
+            sents_t = sents_t.transpose(0, 1)
+            pos_t = iter_obj.pos.transpose(0, 1)
+            mask_t = iter_obj.mask.transpose(0, 1)
+
+            if self.args.pos_emb_dim > 0:
+                pos_embed_t = self.pos_embed(pos_t)
+                sents_t = torch.cat((sents_t, pos_embed_t), dim=-1)
+
+            for emb_s, tagid_s, mask_s in zip(sents_t, pos_t, mask_t):
+                for tagid, emb, mask in zip(tagid_s, emb_s, mask_s):
+                    tagid = tagid.item()
+                    mask = mask.item()
+                    if tagid in emb_dict:
+                        emb_dict[tagid] = emb_dict[tagid] + (emb - self.means[tagid]) ** 2 * mask
+                    else:
+                        emb_dict[tagid] = (emb - self.means[tagid]) ** 2 * mask
+
+                    cnt_dict[tagid] += mask
+
+        for tagid in emb_dict:
+            self.var[tagid] = emb_dict[tagid] / cnt_dict[tagid]
+            self.var[tagid][:].fill_(1.)
 
     def transform(self, x, masks=None):
         """
@@ -266,13 +295,12 @@ class DMVFlow(nn.Module):
 
         return res
 
-    def test(self, test_data, batch_size=20):
+    def test(self, test_data, batch_size=10):
         """
         Args:
             gold: A nested list of heads
             all_len: True if evaluate on all lengths
         """
-        pad = np.zeros(self.num_dims)
         cnt = 0
         dir_cnt = 0.0
         undir_cnt = 0.0
@@ -344,14 +372,14 @@ class DMVFlow(nn.Module):
             density: (batch_size, seq_length, num_state)
 
         """
-        constant = -self.num_dims/2.0 * (math.log(2 * math.pi)) - \
-                0.5 * torch.sum(torch.log(self.var))
+        constant = -self.total_dims/2.0 * (math.log(2 * math.pi)) - \
+                0.5 * torch.sum(torch.log(self.var), dim=-1)
 
         batch_size, seq_length, features = s.size()
         means = self.means.view(1, 1, self.num_state, features)
         words = s.unsqueeze(dim=2)
-        var = self.var.view(1, 1, 1, self.num_dims)
-        return constant - \
+        var = self.var.view(1, 1, self.num_state, self.total_dims)
+        return constant.view(1, 1, self.num_state) - \
                0.5 * torch.sum((means - words) ** 2 / var, dim=3)
 
     def _eval_log_density_supervised(self, sents, pos):
@@ -364,20 +392,29 @@ class DMVFlow(nn.Module):
             density: (batch_size, seq_length)
 
         """
-        constant = -self.num_dims/2.0 * (math.log(2 * math.pi)) - \
-                0.5 * torch.sum(torch.log(self.var))
+        constant = -self.total_dims/2.0 * (math.log(2 * math.pi)) - \
+                0.5 * torch.sum(torch.log(self.var), dim=-1)
 
         batch_size, seq_length, features = sents.size()
+
+        constant = constant.view(1, 1, self.num_state)
+        constant = constant.expand(batch_size, seq_length, self.num_state)
+        constant = torch.gather(constant, dim=2, index=pos.unsqueeze(2)).squeeze(2)
+
         means = self.means.view(1, 1, self.num_state, features)
         means = means.expand(batch_size, seq_length,
-            self.num_state, self.num_dims)
+            self.num_state, self.total_dims)
         tag_id = pos.view(*pos.size(), 1, 1).expand(batch_size,
-            seq_length, 1, self.num_dims)
+            seq_length, 1, self.total_dims)
 
         # (batch_size, seq_len, num_dims)
         means = torch.gather(means, dim=2, index=tag_id).squeeze(2)
 
-        var = self.var.view(1, 1, self.num_dims)
+        var = self.var.view(1, 1, self.num_state, self.total_dims)
+        var = var.expand(batch_size, seq_length,
+                self.num_state, self.total_dims)
+        var = torch.gather(var, dim=2, index=tag_id).squeeze(2)
+
         return constant - \
                0.5 * torch.sum((means - sents) ** 2 / var, dim=-1)
 
@@ -484,8 +521,8 @@ class DMVFlow(nn.Module):
         self.log_stop_left = self.args.prob_const * log_softmax(self.stop_left, dim=0)
         self.log_root_attach_left = self.args.prob_const * log_softmax(self.root_attach_left, dim=0)
 
-        constant = -self.num_dims/2.0 * (math.log(2 * math.pi)) - \
-                0.5 * torch.sum(torch.log(self.var))
+        constant = -self.total_dims/2.0 * (math.log(2 * math.pi)) - \
+                0.5 * torch.sum(torch.log(self.var), dim=-1)
 
         # (seq_len, num_dims)
         embed_t = torch.tensor(embed, dtype=torch.float32, requires_grad=False, device=self.device)
@@ -590,16 +627,22 @@ class DMVFlow(nn.Module):
         self.log_stop_left = log_softmax(self.stop_left, dim=0)
         self.log_root_attach_left = log_softmax(self.root_attach_left, dim=0)
 
-        constant = -self.num_dims/2.0 * (math.log(2 * math.pi)) - \
-                    0.5 * torch.sum(torch.log(self.var))
+        constant = -self.total_dims/2.0 * (math.log(2 * math.pi)) - \
+                    0.5 * torch.sum(torch.log(self.var), dim=-1)
 
         decoded_pos = []
-        for embed, tree in zip(train_data.embed, train_data.trees):
+        for embed, tree, gold_pos in zip(train_data.embed, train_data.trees, train_data.postags):
             pos = [0] * len(embed)
             parse_tree = ParseTree(tree, [], [])
             embed_t = torch.tensor(embed, dtype=torch.float32, requires_grad=False, device=self.device)
             embed_t, _ = self.transform(embed_t.unsqueeze(1))
             embed_t = embed_t.squeeze(1)
+
+            if self.args.pos_emb_dim > 0:
+                gold_pos = torch.tensor(gold_pos, dtype=torch.long, requires_grad=False, device=self.device)
+                pos_embed = self.pos_embed(gold_pos)
+                embed_t = torch.cat((embed_t, pos_embed), dim=-1)
+
             log_prob = self._find_best_path(tree, parse_tree, constant, embed_t)
 
             log_prob = self.log_root_attach_left + log_prob
