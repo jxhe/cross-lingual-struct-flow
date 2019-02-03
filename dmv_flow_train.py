@@ -47,6 +47,7 @@ def init_config():
     parser.add_argument('--freeze_prior', action="store_true", default=False)
     parser.add_argument('--freeze_proj', action="store_true", default=False)
     parser.add_argument('--freeze_mean', action="store_true", default=False)
+    parser.add_argument('--em_train', action="store_true", default=False)
 
 
 
@@ -82,6 +83,10 @@ def init_config():
     config_file = "config.config_{}".format(args.lang)
     params = importlib.import_module(config_file).params_dmv
     args = argparse.Namespace(**vars(args), **params)
+
+    if args.em_train:
+        args.freeze_mean = True
+        args.freeze_prior = True
 
     if args.set_seed:
         torch.manual_seed(args.seed)
@@ -248,7 +253,9 @@ def main(args):
 
                 if (cnt+1) % args.batch_size == 0:
                     torch.nn.utils.clip_grad_norm_(model.proj_group, 5.0)
-                    prior_optimizer.step()
+
+                    if not args.em_train:
+                        prior_optimizer.step()
                     proj_optimizer.step()
 
                     prior_optimizer.zero_grad()
@@ -309,6 +316,15 @@ def main(args):
 
         # print("\nTRAIN epoch {}: ll_per_sent: {:.4f}, ll_per_word: {:.4f}\n".format(
         #     epoch, report_ll / report_num_sents, report_ll / report_num_words))
+        if args.em_train:
+            with torch.no_grad():
+                pos_seq = model.parse_pos_seq(train_data)
+                acc = model.test(test_data)
+                print("TEST: epoch{}, acc {} before EM setting".format(epoch, acc))
+                print("Viterbi EM: set DMV parameters")
+                model.set_dmv_params(train_data, pos_seq)
+                acc = model.test(test_data)
+                print("TEST: epoch{}, acc {} after EM setting".format(epoch, acc))
 
         if epoch % 3 == 0:
             with torch.no_grad():

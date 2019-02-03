@@ -6,7 +6,7 @@ import torch.nn as nn
 
 import numpy as np
 
-from collections import Counter
+from collections import Counter, namedtuple
 from .projection import NICETrans, LSTMNICE
 from .dmv_viterbi_model import DMVDict
 
@@ -18,6 +18,9 @@ from .utils import log_sum_exp, \
                    to_input_tensor, \
                    stable_math_log
 NEG_INFINITY = -1e20
+
+ParseTree = namedtuple("parsetree", ["tree", "decode_tag", "children"])
+
 
 def test_piodict(piodict):
     """
@@ -362,13 +365,16 @@ class DMVFlow(nn.Module):
         return constant - \
                0.5 * torch.sum((means - sents) ** 2 / var, dim=-1)
 
-    def set_dmv_params(self, train_data):
+    def set_dmv_params(self, train_data, pos_seq=None):
         self.attach_left.fill_(1.)
         self.attach_right.fill_(1.)
         self.root_attach_left.fill_(1.)
         self.stop_right.fill_(1.)
         self.stop_left.fill_(1.)
 
+        if pos_seq is None:
+            pos_seq = train_data.postags
+            
         for pos_s, head_s, left_s, right_s in zip(train_data.postags,
                                                   train_data.heads,
                                                   train_data.left_num_deps,
@@ -541,6 +547,121 @@ class DMVFlow(nn.Module):
             log_prob = log_prob + self.log_stop_right[1, :, 0]
 
         return log_prob
+
+    def parse_pos_seq(self, train_data):
+        """decode the best latent tag sequences, given
+        all the paramters and gold tree structures
+
+        Return: List1
+            
+            List1: a list of decoded pos tag ids, format is like
+                   train_data.pos
+        """
+        self.log_attach_left = log_softmax(self.attach_left, dim=1)
+        self.log_attach_right = log_softmax(self.attach_right, dim=1)
+        self.log_stop_right = log_softmax(self.stop_right, dim=0)
+        self.log_stop_left = log_softmax(self.stop_left, dim=0)
+        self.log_root_attach_left = log_softmax(self.root_attach_left, dim=0)
+
+        constant = -self.num_dims/2.0 * (math.log(2 * math.pi)) - \
+                    0.5 * torch.sum(torch.log(self.var))
+
+        decoded_pos = []
+        for embed, tree in zip(train_data.embed, train_data.trees):
+            pos = [0] * len(embed)
+            parse_tree = ParseTree(tree, [], [])
+            embed_t = torch.tensor(embed, dtype=torch.float32, requires_grad=False, device=self.device)
+            embed_t, _ = self.transform(embed_t.unsqueeze(1))
+            embed_t = embed_t.squeeze(1)
+            log_prob = self._find_best_path(tree, parse_tree, constant, embed_t)
+
+            log_prob = self.log_root_attach_left + log_prob
+            log_prob, root_index = torch.max(log_prob, dim=0)
+            self._find_pos_seq(parse_tree, root_index, pos)
+
+            decoded_pos.append(pos)
+
+        return decoded_pos
+
+    def _find_best_path(self, tree, parse_tree, constant, embed_s):
+        """decode the most likely latent tag tree given
+        current tree and sequence of latent embeddings,
+        """
+
+        token_id = tree.token["id"]
+        embed = embed_s[token_id-1]
+
+        embed = embed.unsqueeze(0)
+
+        log_prob = constant - 0.5 * torch.sum(
+            (self.means - embed)**2 / self.var, dim=1)
+
+        # leaf nodes
+        if tree.children == []:
+            return log_prob
+
+
+        left = []
+        right = []
+
+        for t in tree.children:
+            if t.token["id"] < tree.token["id"]:
+                left.append(t)
+            elif t.token["id"] > tree.token["id"]:
+                right.append(t)
+            else:
+                raise ValueError
+
+        if left == []:
+            log_prob = log_prob + self.log_stop_left[1, :, 1]
+        else:
+            for i, l in enumerate(left[::-1]):
+                parse_tree_tmp = ParseTree(l, [], [])
+                left_prob = self._find_best_path(l, parse_tree_tmp, constant, embed_s)
+
+                # (num_state, num_state) --> (num_state)
+                left_prob = self.log_attach_left + left_prob.unsqueeze(0)
+                left_prob, left_prob_index = torch.max(left_prob, dim=1)
+
+                # valence
+                log_prob = log_prob + left_prob + self.log_stop_left[0, :, int(i==0)]
+
+                parse_tree.children.append(parse_tree_tmp)
+                parse_tree.decode_tag.append(left_prob_index)
+
+            log_prob = log_prob + self.log_stop_left[1, :, 0]
+
+
+        if right == []:
+            log_prob = log_prob + self.log_stop_right[1, :, 1]
+        else:
+            for i, r in enumerate(right):
+                parse_tree_tmp = ParseTree(r, [], [])
+                right_prob = self._find_best_path(r, parse_tree_tmp, constant, embed_s)
+
+                # (num_state, num_state) --> (num_state)
+                right_prob = self.log_attach_right + right_prob.unsqueeze(0)
+                right_prob, right_prob_index = torch.max(right_prob, dim=1)
+
+                # valence
+                log_prob = log_prob + right_prob + self.log_stop_right[0, :, int(i==0)]
+                parse_tree.children.append(parse_tree_tmp)
+                parse_tree.decode_tag.append(right_prob_index)
+
+            log_prob = log_prob + self.log_stop_right[1, :, 0]
+
+        return log_prob
+
+    def _find_pos_seq(self, parse_tree, head_index, pos):
+        """decode the pos sequence, results are stored in pos
+        """
+
+        token_id = parse_tree.tree.token["id"]
+        pos[token_id-1] = head_index
+
+        for child, decode_tag in zip(parse_tree.children, parse_tree.decode_tag):
+            head_index_child = decode_tag[head_index]
+            self._find_pos_seq(child, head_index_child, pos)
 
     # def supervised_loss(self, sents, iter_obj):
 
