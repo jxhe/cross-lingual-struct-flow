@@ -46,6 +46,7 @@ class DMVFlow(nn.Module):
 
         self.num_state = num_state
         self.num_dims = num_dims
+        self.pos_emb_dim = args.pos_emb_dim
         self.args = args
         self.device = args.device
 
@@ -57,7 +58,11 @@ class DMVFlow(nn.Module):
 
         self.harmonic = False
 
-        self.means = Parameter(torch.Tensor(self.num_state, self.num_dims))
+        if args.pos_emb_dim > 0:
+            self.pos_embed = nn.Embedding(num_state, self.pos_emb_dim)
+            self.proj_group = list(self.pos_embed.parameters())
+
+        self.means = Parameter(torch.Tensor(self.num_state, self.num_dims + args.pos_emb_dim))
 
         if args.model == 'nice':
             self.proj_layer = NICETrans(self.args.couple_layers,
@@ -76,7 +81,7 @@ class DMVFlow(nn.Module):
 
 
         # Gaussian Variance
-        self.var = Parameter(torch.zeros(num_dims, dtype=torch.float32))
+        self.var = Parameter(torch.zeros(num_dims + args.pos_emb_dim, dtype=torch.float32))
 
         if not self.args.train_var:
             self.var.requires_grad = False
@@ -97,9 +102,9 @@ class DMVFlow(nn.Module):
                             self.root_attach_left]
 
         if args.model == "gaussian":
-            self.proj_group = [self.means, self.var]
+            self.proj_group += [self.means, self.var]
         else:
-            self.proj_group = list(self.proj_layer.parameters()) + [self.means, self.var]
+            self.proj_group += list(self.proj_layer.parameters()) + [self.means, self.var]
 
         if self.args.freeze_prior:
             for x in self.prior_group:
@@ -149,6 +154,12 @@ class DMVFlow(nn.Module):
         sents = init_seed.embed
         masks = init_seed.mask
         sents, _ = self.transform(sents, masks)
+
+        if self.pos_emb_dim > 0:
+            pos = init_seed.pos
+            pos_embed = self.pos_embed(pos)
+            sents = torch.cat((sents, pos_embed), dim=-1)
+
         features = sents.size(-1)
         flat_sents = sents.view(-1, features)
         seed_mean = torch.sum(masks.view(-1, 1).expand_as(flat_sents) *
@@ -169,6 +180,11 @@ class DMVFlow(nn.Module):
             sents_t = sents_t.transpose(0, 1)
             pos_t = iter_obj.pos.transpose(0, 1)
             mask_t = iter_obj.mask.transpose(0, 1)
+
+            if self.args.pos_emb_dim > 0:
+                pos_embed_t = self.pos_embed(pos_t)
+                sents_t = torch.cat((sents_t, pos_embed_t), dim=-1)
+                
             for emb_s, tagid_s, mask_s in zip(sents_t, pos_t, mask_t):
                 for tagid, emb, mask in zip(tagid_s, emb_s, mask_s):
                     tagid = tagid.item()
@@ -435,6 +451,11 @@ class DMVFlow(nn.Module):
 
         # (batch_size, seq_len)
         pos_t = iter_obj.pos.transpose(0, 1)
+
+        if self.args.pos_emb_dim > 0:
+            pos_embed = self.pos_embed(pos_t)
+            embed = torch.cat((embed, pos_t), dim=-1)
+
         density = self._eval_log_density_supervised(embed, pos_t)
 
         log_emission_prob = torch.mul(density, iter_obj.mask.transpose(0, 1)).sum()
@@ -442,13 +463,14 @@ class DMVFlow(nn.Module):
         return -log_emission_prob
 
 
-    def supervised_loss_wopos(self, tree, embed):
+    def supervised_loss_wopos(self, tree, embed, pos):
         """This is the non-batched version of supervised loss when
         dep structure is known but pos tags are unknown.
 
         Args:
             tree: TreeToken object from conllu
             embed: list of embeddings
+            pos: list of pos tag ids
 
         Returns: Tensor1, Tensor2
             Tensor1: a scalar tensor of nll
@@ -469,6 +491,11 @@ class DMVFlow(nn.Module):
         embed_t = torch.tensor(embed, dtype=torch.float32, requires_grad=False, device=self.device)
         embed_t, jacob = self.transform(embed_t.unsqueeze(1))
         embed_t = embed_t.squeeze(1)
+
+        if self.args.pos_emb_dim > 0:
+            pos_t = torch.tensor(pos, dtype=torch.long, requires_grad=False, device=self.device)
+            pos_embed = self.pos_embed(pos_t)
+            embed_t = torch.cat((embed_t, pos_embed), dim=-1)
 
         # (num_state)
         log_prob = self._calc_log_prob(tree, constant, embed_t)
@@ -936,6 +963,9 @@ class DMVFlow(nn.Module):
         self.log_stop_left = self.args.prob_const * log_softmax(self.stop_left, dim=0)
         self.log_root_attach_left = self.args.prob_const * log_softmax(self.root_attach_left, dim=0)
 
+        if self.args.pos_emb_dim > 0:
+            pos_embed = self.pos_embed(gold_pos.transpose(0, 1))
+            sents = torch.cat((sents, pos_embed), dim=-1)
 
         # (batch_size, seq_length, num_state)
         density = self._eval_log_density(sents)

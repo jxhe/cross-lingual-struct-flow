@@ -48,6 +48,7 @@ def init_config():
     parser.add_argument('--freeze_proj', action="store_true", default=False)
     parser.add_argument('--freeze_mean', action="store_true", default=False)
     parser.add_argument('--em_train', action="store_true", default=False)
+    parser.add_argument('--pos_emb_dim', type=int, default=0)
 
 
 
@@ -245,10 +246,10 @@ def main(args):
                                 batch_flag = False
                                 break
 
-                train_tree, embed = train_data.trees[i], train_data.embed[i]
+                train_tree, embed, pos = train_data.trees[i], train_data.embed[i], train_data.postags[i]
                 num_words = len(embed)
 
-                nll, jacobian_loss = model.supervised_loss_wopos(train_tree, embed)
+                nll, jacobian_loss = model.supervised_loss_wopos(train_tree, embed, pos)
                 nll.backward()
 
                 if (cnt+1) % args.batch_size == 0:
