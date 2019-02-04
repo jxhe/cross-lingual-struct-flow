@@ -128,11 +128,11 @@ class DMVFlow(nn.Module):
         """
 
         if self.args.load_nice != '':
-            self.load_state_dict(torch.load(self.args.load_nice), strict=False)
+            self.load_state_dict(torch.load(self.args.load_nice), strict=True)
             return
 
         if self.args.load_gaussian != '':
-            self.load_state_dict(torch.load(self.args.load_gaussian), strict=False)
+            self.load_state_dict(torch.load(self.args.load_gaussian), strict=True)
             return
 
         # init transition params

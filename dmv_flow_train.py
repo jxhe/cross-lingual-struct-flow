@@ -10,14 +10,7 @@ import importlib
 import torch
 import numpy as np
 
-from modules import ConlluData
-import modules.dmv_flow_model as dmv
-from modules import data_iter, \
-                    read_conll, \
-                    sents_to_vec, \
-                    sents_to_tagid, \
-                    to_input_tensor, \
-                    generate_seed
+from modules import *
 
 from multilingual_trans.fasttext import FastVector
 
@@ -114,10 +107,11 @@ def main(args):
     else:
         train_max_len = args.max_len
 
+    pos_to_id = read_tag_map("tag_map.txt")
+
     train_data = ConlluData(args.train_file, word_vec_dict,
-            max_len=train_max_len, device=device,
+            max_len=train_max_len, device=device, pos_to_id_dict=pos_to_id
             read_tree=(args.mode == "supervised_wopos"))
-    pos_to_id = train_data.pos_to_id
 
     val_data = ConlluData(args.val_file, word_vec_dict,
             max_len=args.max_len, device=device, pos_to_id_dict=pos_to_id)
@@ -134,7 +128,7 @@ def main(args):
     print("#test sentences: {}".format(test_data.length))
 
     exclude_pos = [pos_to_id["PUNCT"], pos_to_id["SYM"]]
-    model = dmv.DMVFlow(args, len(pos_to_id),
+    model = DMVFlow(args, len(pos_to_id),
         num_dims, exclude_pos, word_vec_dict).to(device)
 
     init_seed = next(train_data.data_iter(args.batch_size))
