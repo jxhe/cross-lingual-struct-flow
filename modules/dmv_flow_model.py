@@ -227,7 +227,7 @@ class DMVFlow(nn.Module):
 
         for tagid in emb_dict:
             self.var[tagid] = emb_dict[tagid] / cnt_dict[tagid]
-            self.var[tagid][:].fill_(1.)
+            self.var[tagid][:].fill_(5.)
 
     def transform(self, x, masks=None):
         """
@@ -308,7 +308,7 @@ class DMVFlow(nn.Module):
 
         batch_id_ = 0
         if self.args.max_len > 20:
-            batch_size = 3
+            batch_size = 2
 
         for iter_obj in test_data.data_iter(batch_size=batch_size,
                                             shuffle=False):
