@@ -63,6 +63,9 @@ class DMVFlow(nn.Module):
         if args.pos_emb_dim > 0:
             self.pos_embed = nn.Embedding(num_state, self.pos_emb_dim)
             self.proj_group = list(self.pos_embed.parameters())
+            if args.freeze_pos_emb:
+                self.pos_embed.weight.requires_grad = False
+
 
         self.means = Parameter(torch.Tensor(self.num_state, self.num_dims + args.pos_emb_dim))
 
@@ -129,6 +132,11 @@ class DMVFlow(nn.Module):
 
         if self.args.load_nice != '':
             self.load_state_dict(torch.load(self.args.load_nice), strict=True)
+            if self.args.init_mean:
+                self.init_mean(train_data)
+
+            if self.args.init_var:
+                self.init_var(train_data)
             return
 
         if self.args.load_gaussian != '':
@@ -227,7 +235,7 @@ class DMVFlow(nn.Module):
 
         for tagid in emb_dict:
             self.var[tagid] = emb_dict[tagid] / cnt_dict[tagid]
-            self.var[tagid][:].fill_(5.)
+            self.var[tagid][self.num_dims:].fill_(5.)
 
     def transform(self, x, masks=None):
         """
@@ -485,6 +493,7 @@ class DMVFlow(nn.Module):
         """
 
         embed = iter_obj.embed.transpose(0, 1)
+        embed, jacob = self.transform(embed, iter_obj.mask)
 
         # (batch_size, seq_len)
         pos_t = iter_obj.pos.transpose(0, 1)
@@ -497,7 +506,7 @@ class DMVFlow(nn.Module):
 
         log_emission_prob = torch.mul(density, iter_obj.mask.transpose(0, 1)).sum()
 
-        return -log_emission_prob
+        return -log_emission_prob, jacob
 
 
     def supervised_loss_wopos(self, tree, embed, pos):
@@ -850,7 +859,7 @@ class DMVFlow(nn.Module):
     #     return -log_prob
 
 
-    def unsupervised_loss(self, sents, masks):
+    def unsupervised_loss(self, iter_obj):
         """
         Args:
             sents: A tensor with size (batch_size, seq_length, features)
@@ -873,6 +882,18 @@ class DMVFlow(nn.Module):
         self.log_stop_right = log_softmax(self.stop_right, dim=0)
         self.log_stop_left = log_softmax(self.stop_left, dim=0)
         self.log_root_attach_left = log_softmax(self.root_attach_left, dim=0)
+
+        sents = iter_obj.embed
+        masks = iter_obj.mask
+
+        sents, jacob = self.transform(sents, masks)
+        pos_t = iter_obj.pos
+
+        if self.args.pos_emb_dim > 0:
+            pos_embed = self.pos_embed(pos_t)
+            sents = torch.cat((sents, pos_embed), dim=-1)
+
+        sents = sents.transpose(0, 1)
 
         # (batch_size, seq_length, num_state)
         density = self._eval_log_density(sents)
@@ -985,7 +1006,7 @@ class DMVFlow(nn.Module):
         log_root = log_p_sum_cat + self.log_root_attach_left.view(1, self.num_state, 1) \
                    .expand_as(log_p_sum_cat)
 
-        return -torch.sum(log_sum_exp(log_root.view(batch_size, -1), dim=1))
+        return -torch.sum(log_sum_exp(log_root.view(batch_size, -1), dim=1)), jacob
 
 
     def dep_parse(self, sents, iter_obj, symbol_index_t):

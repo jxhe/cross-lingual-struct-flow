@@ -40,7 +40,10 @@ def init_config():
     parser.add_argument('--freeze_prior', action="store_true", default=False)
     parser.add_argument('--freeze_proj', action="store_true", default=False)
     parser.add_argument('--freeze_mean', action="store_true", default=False)
+    parser.add_argument('--freeze_pos_emb', action="store_true", default=False)
     parser.add_argument('--em_train', action="store_true", default=False)
+    parser.add_argument('--init_var', action="store_true", default=False)
+    parser.add_argument('--init_mean', action="store_true", default=False)
     parser.add_argument('--pos_emb_dim', type=int, default=0)
 
 
@@ -110,7 +113,7 @@ def main(args):
     pos_to_id = read_tag_map("tag_map.txt")
 
     train_data = ConlluData(args.train_file, word_vec_dict,
-            max_len=train_max_len, device=device, pos_to_id_dict=pos_to_id
+            max_len=train_max_len, device=device, pos_to_id_dict=pos_to_id,
             read_tree=(args.mode == "supervised_wopos"))
 
     val_data = ConlluData(args.val_file, word_vec_dict,
@@ -182,9 +185,10 @@ def main(args):
     best_acc = 0.
 
     # if args.mode == "supervised_wpos":
-    print("set DMV paramters directly")
-    with torch.no_grad():
-        model.set_dmv_params(train_data)
+    if args.mode != "unsupervised":
+        print("set DMV paramters directly")
+        with torch.no_grad():
+            model.set_dmv_params(train_data)
 
     with torch.no_grad():
         acc = model.test(test_data)
@@ -276,13 +280,10 @@ def main(args):
                 prior_optimizer.zero_grad()
                 proj_optimizer.zero_grad()
 
-                sents, jacobian_loss = model.transform(iter_obj.embed, iter_obj.mask)
-                sents = sents.transpose(0, 1)
-
                 if args.mode == "unsupervised":
-                    nll = model.unsupervised_loss(sents, iter_obj.masks)
+                    nll, jacobian_loss = model.unsupervised_loss(iter_obj)
                 elif args.mode == "supervised_wpos":
-                    nll = model.supervised_loss_wpos(iter_obj)
+                    nll, jacobian_loss = model.supervised_loss_wpos(iter_obj)
                 else:
                     raise ValueError("{} mode is not supported".format(args.mode))
 
@@ -290,19 +291,20 @@ def main(args):
 
                 avg_ll_loss.backward()
 
-                torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
+                torch.nn.utils.clip_grad_norm_(model.proj_group, 5.0)
                 proj_optimizer.step()
+                prior_optimizer.step()
 
-                report_ll -= nll.item()
-                report_num_words += num_words
-                report_num_sents += batch_size
+                report_ll[0] -= nll.item()
+                report_num_words[0] += num_words
+                report_num_sents[0] += batch_size
 
 
                 if train_iter % log_niter == 0:
                     print('epoch %d, iter %d, ll_per_sent %.4f, ll_per_word %.4f, ' \
                           'max_var %.4f, min_var %.4f time elapsed %.2f sec' % \
-                          (epoch, train_iter, report_ll / report_num_sents, \
-                          report_ll / report_num_words, model.var.data.max(), \
+                          (epoch, train_iter, report_ll[0] / report_num_sents[0], \
+                          report_ll[0] / report_num_words[0], model.var.data.max(), \
                           model.var.data.min(), time.time() - begin_time), file=sys.stderr)
 
                 # break
