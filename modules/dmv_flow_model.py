@@ -58,16 +58,15 @@ class DMVFlow(nn.Module):
 
         self.harmonic = False
 
-        self.total_dims = self.num_dims + args.pos_emb_dim
+        self.num_dims += args.pos_emb_dim
 
-        if args.pos_emb_dim > 0:
-            self.pos_embed = nn.Embedding(num_state, self.pos_emb_dim)
-            self.proj_group = list(self.pos_embed.parameters())
-            if args.freeze_pos_emb:
-                self.pos_embed.weight.requires_grad = False
+        self.pos_embed = nn.Embedding(num_state, self.pos_emb_dim)
+        self.proj_group = list(self.pos_embed.parameters())
+        if args.freeze_pos_emb:
+            self.pos_embed.weight.requires_grad = False
 
 
-        self.means = Parameter(torch.Tensor(self.num_state, self.num_dims + args.pos_emb_dim))
+        self.means = Parameter(torch.Tensor(self.num_state, self.num_dims))
 
         if args.model == 'nice':
             self.proj_layer = NICETrans(self.args.couple_layers,
@@ -86,7 +85,7 @@ class DMVFlow(nn.Module):
 
 
         # Gaussian Variance
-        self.var = Parameter(torch.zeros((num_state, num_dims + args.pos_emb_dim), dtype=torch.float32))
+        self.var = Parameter(torch.zeros((num_state, num_dims), dtype=torch.float32))
 
         if not self.args.train_var:
             self.var.requires_grad = False
@@ -235,7 +234,7 @@ class DMVFlow(nn.Module):
 
         for tagid in emb_dict:
             self.var[tagid] = emb_dict[tagid] / cnt_dict[tagid]
-            self.var[tagid][self.num_dims:].fill_(5.)
+            # self.var[tagid][self.num_dims:].fill_(5.)
 
     def transform(self, x, masks=None):
         """
@@ -324,6 +323,11 @@ class DMVFlow(nn.Module):
             batch_id_ += 1
             try:
                 sents_t, _ = self.transform(iter_obj.embed, iter_obj.mask)
+
+                if self.args.pos_emb_dim > 0:
+                    pos_embed = self.pos_embed(iter_obj.pos)
+                    sents_t = torch.cat((sents_t, pos_embed), dim=-1)
+
                 sents_t = sents_t.transpose(0, 1)
                 # root_max_index: (batch_size, num_state, seq_length)
                 batch_size, seq_length, _ = sents_t.size()
@@ -380,13 +384,13 @@ class DMVFlow(nn.Module):
             density: (batch_size, seq_length, num_state)
 
         """
-        constant = -self.total_dims/2.0 * (math.log(2 * math.pi)) - \
+        constant = -self.num_dims/2.0 * (math.log(2 * math.pi)) - \
                 0.5 * torch.sum(torch.log(self.var), dim=-1)
 
         batch_size, seq_length, features = s.size()
         means = self.means.view(1, 1, self.num_state, features)
         words = s.unsqueeze(dim=2)
-        var = self.var.view(1, 1, self.num_state, self.total_dims)
+        var = self.var.view(1, 1, self.num_state, self.num_dims)
         return constant.view(1, 1, self.num_state) - \
                0.5 * torch.sum((means - words) ** 2 / var, dim=3)
 
@@ -400,7 +404,7 @@ class DMVFlow(nn.Module):
             density: (batch_size, seq_length)
 
         """
-        constant = -self.total_dims/2.0 * (math.log(2 * math.pi)) - \
+        constant = -self.num_dims/2.0 * (math.log(2 * math.pi)) - \
                 0.5 * torch.sum(torch.log(self.var), dim=-1)
 
         batch_size, seq_length, features = sents.size()
@@ -411,16 +415,16 @@ class DMVFlow(nn.Module):
 
         means = self.means.view(1, 1, self.num_state, features)
         means = means.expand(batch_size, seq_length,
-            self.num_state, self.total_dims)
+            self.num_state, self.num_dims)
         tag_id = pos.view(*pos.size(), 1, 1).expand(batch_size,
-            seq_length, 1, self.total_dims)
+            seq_length, 1, self.num_dims)
 
         # (batch_size, seq_len, num_dims)
         means = torch.gather(means, dim=2, index=tag_id).squeeze(2)
 
-        var = self.var.view(1, 1, self.num_state, self.total_dims)
+        var = self.var.view(1, 1, self.num_state, self.num_dims)
         var = var.expand(batch_size, seq_length,
-                self.num_state, self.total_dims)
+                self.num_state, self.num_dims)
         var = torch.gather(var, dim=2, index=tag_id).squeeze(2)
 
         return constant - \
@@ -493,14 +497,14 @@ class DMVFlow(nn.Module):
         """
 
         embed = iter_obj.embed.transpose(0, 1)
-        embed, jacob = self.transform(embed, iter_obj.mask)
-
         # (batch_size, seq_len)
         pos_t = iter_obj.pos.transpose(0, 1)
 
         if self.args.pos_emb_dim > 0:
             pos_embed = self.pos_embed(pos_t)
             embed = torch.cat((embed, pos_t), dim=-1)
+
+        embed, jacob = self.transform(embed, iter_obj.mask)
 
         density = self._eval_log_density_supervised(embed, pos_t)
 
@@ -530,18 +534,19 @@ class DMVFlow(nn.Module):
         self.log_stop_left = self.args.prob_const * log_softmax(self.stop_left, dim=0)
         self.log_root_attach_left = self.args.prob_const * log_softmax(self.root_attach_left, dim=0)
 
-        constant = -self.total_dims/2.0 * (math.log(2 * math.pi)) - \
+        constant = -self.num_dims/2.0 * (math.log(2 * math.pi)) - \
                 0.5 * torch.sum(torch.log(self.var), dim=-1)
 
         # (seq_len, num_dims)
         embed_t = torch.tensor(embed, dtype=torch.float32, requires_grad=False, device=self.device)
-        embed_t, jacob = self.transform(embed_t.unsqueeze(1))
-        embed_t = embed_t.squeeze(1)
-
         if self.args.pos_emb_dim > 0:
             pos_t = torch.tensor(pos, dtype=torch.long, requires_grad=False, device=self.device)
             pos_embed = self.pos_embed(pos_t)
             embed_t = torch.cat((embed_t, pos_embed), dim=-1)
+            
+        embed_t, jacob = self.transform(embed_t.unsqueeze(1))
+        embed_t = embed_t.squeeze(1)
+
 
         # (num_state)
         log_prob = self._calc_log_prob(tree, constant, embed_t)
@@ -636,7 +641,7 @@ class DMVFlow(nn.Module):
         self.log_stop_left = log_softmax(self.stop_left, dim=0)
         self.log_root_attach_left = log_softmax(self.root_attach_left, dim=0)
 
-        constant = -self.total_dims/2.0 * (math.log(2 * math.pi)) - \
+        constant = -self.num_dims/2.0 * (math.log(2 * math.pi)) - \
                     0.5 * torch.sum(torch.log(self.var), dim=-1)
 
         decoded_pos = []
@@ -644,13 +649,14 @@ class DMVFlow(nn.Module):
             pos = [0] * len(embed)
             parse_tree = ParseTree(tree, [], [])
             embed_t = torch.tensor(embed, dtype=torch.float32, requires_grad=False, device=self.device)
-            embed_t, _ = self.transform(embed_t.unsqueeze(1))
-            embed_t = embed_t.squeeze(1)
 
             if self.args.pos_emb_dim > 0:
                 gold_pos = torch.tensor(gold_pos, dtype=torch.long, requires_grad=False, device=self.device)
                 pos_embed = self.pos_embed(gold_pos)
                 embed_t = torch.cat((embed_t, pos_embed), dim=-1)
+
+            embed_t, _ = self.transform(embed_t.unsqueeze(1))
+            embed_t = embed_t.squeeze(1)
 
             log_prob = self._find_best_path(tree, parse_tree, constant, embed_t)
 
@@ -885,13 +891,13 @@ class DMVFlow(nn.Module):
 
         sents = iter_obj.embed
         masks = iter_obj.mask
-
-        sents, jacob = self.transform(sents, masks)
         pos_t = iter_obj.pos
 
         if self.args.pos_emb_dim > 0:
             pos_embed = self.pos_embed(pos_t)
             sents = torch.cat((sents, pos_embed), dim=-1)
+
+        sents, jacob = self.transform(sents, masks)
 
         sents = sents.transpose(0, 1)
 
@@ -1026,10 +1032,6 @@ class DMVFlow(nn.Module):
         self.log_stop_right = self.args.prob_const * log_softmax(self.stop_right, dim=0)
         self.log_stop_left = self.args.prob_const * log_softmax(self.stop_left, dim=0)
         self.log_root_attach_left = self.args.prob_const * log_softmax(self.root_attach_left, dim=0)
-
-        if self.args.pos_emb_dim > 0:
-            pos_embed = self.pos_embed(gold_pos.transpose(0, 1))
-            sents = torch.cat((sents, pos_embed), dim=-1)
 
         # (batch_size, seq_length, num_state)
         density = self._eval_log_density(sents)
