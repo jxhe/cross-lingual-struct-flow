@@ -269,13 +269,15 @@ class DMVFlow(nn.Module):
     def tree_to_depset(self, root_max_index, sent_len):
         """
         Args:
-            root_max_index: (batch_size, 2)
+            root_max_index: (batch_size, 2), [:0] represents the 
+                            optimal state, [:1] represents the 
+                            optimal index (location)
         """
         # add the root symbol (-1)
         batch_size = root_max_index.size(0)
         dep_list = []
         for batch in range(batch_size):
-            res = set([(root_max_index[batch, 1], -1)])
+            res = set([(root_max_index[batch, 1].item(), -1, root_max_index[batch, 0].item())])
             start = 0
             end = sent_len[batch]
             res.update(self._tree_to_depset(start, end, 2, batch, root_max_index[batch, 0],
@@ -294,11 +296,14 @@ class DMVFlow(nn.Module):
                 assert left_child[3] == 0
                 assert right_child[3] == 2
                 arg = right_child[-1]
+                dep_symbol = right_child[4].item()
             elif mark == 1:
                 assert left_child[3] == 2
                 assert right_child[3] == 1
                 arg = left_child[-1]
-            res = set([(arg, index)])
+                dep_symbol = left_child[4].item()
+
+            res = set([(arg.item(), index, dep_symbol)])
             res.update(self._tree_to_depset(left_child[1].item(), left_child[2].item(),
                                             left_child[3].item(), batch, left_child[4].item(),
                                             left_child[5].item()), \
@@ -392,6 +397,88 @@ class DMVFlow(nn.Module):
 
         return d, l
 
+    def up_viterbi_em(self, train_data):
+        attach_left = self.attach_left.new_ones((self.num_state, self.num_state))
+        attach_right = self.attach_right.new_ones((self.num_state, self.num_state))
+
+        stop_right = self.stop_right.new_ones((2, self.num_state, 2))
+        stop_left = self.stop_left.new_ones((2, self.num_state, 2))
+
+        root_attach_left = self.root_attach_left.new_ones(self.num_state)
+        for iter_obj in train_data.data_iter(batch_size=batch_size,
+                                             shuffle=False):
+            sents_t = iter_obj.embed
+            if self.args.pos_emb_dim > 0:
+                pos_embed = self.pos_embed(iter_obj.pos)
+                sents_t = torch.cat((sents_t, pos_embed), dim=-1)
+
+            sents_t, _ = self.transform(sents_t, iter_obj.mask)            
+
+            # root_max_index: (batch_size, num_state, seq_length)
+            batch_size, seq_length, _ = sents_t.size()
+            symbol_index_t = self.attach_left.new([[[p, q] for q in range(seq_length)] \
+                                                  for p in range(self.num_state)]) \
+                                                  .expand(batch_size, self.num_state, seq_length, 2)
+            root_max_index = self.dep_parse(sents_t, iter_obj, symbol_index_t)
+            masks = iter_obj.mask
+            batch_size = masks.size(1)
+            sent_len = [torch.sum(masks[:, i]).item() for i in range(batch_size)]
+            parse = self.tree_to_depset(root_max_index, sent_len)
+
+            for s in parse:
+                length = len(s)
+                left = [0] * length
+                right = [0] * length
+
+                # count number of left and right children
+                for i in range(length):
+                    head_id = s[i][1]
+                    dep_id = s[i][0]
+                    if dep_id < head_id:
+                        left[head_id] += 1
+                    elif dep_id > head_id:
+                        right[head_id] += 1
+                    else:
+                        raise ValueError
+
+                for i in range(length):
+                    head_id = s[i][1]
+                    head_pos = s[head][2]
+                    dep_pos = s[i][2]
+                    dep_id = s[i][0]
+
+                    if head_id == -1:
+                        root_attach_left[dep_pos] += 1
+                        continue
+
+                    assert(i == dep_id)
+
+                    if dep_id < head_id:
+                        attach_left[head_pos, dep_pos] += 1
+                    elif dep_id > head_id:
+                        attach_right[head_pos, dep_pos] += 1
+
+                    if left[i] > 0:
+                        stop_left[0, dep_pos, 1] += 1
+                        stop_left[0, dep_pos, 0] += left[i] - 1
+                        stop_left[1, dep_pos, 0] += 1
+                    else:
+                        stop_left[1, dep_pos, 1] += 1
+
+
+                    if right[i] > 0:
+                        stop_right[0, dep_pos, 1] += 1
+                        stop_right[0, dep_pos, 0] += right[i] - 1
+                        stop_right[1, dep_pos, 0] += 1
+                    else:
+                        stop_right[1, dep_pos, 1] += 1
+        
+        self.attach_left.copy_(torch.log(attach_left / attach_left.sum(dim=1, keepdim=True)))
+        self.attach_right.copy_(torch.log(attach_right / attach_right.sum(dim=1, keepdim=True)))
+
+        self.stop_right.copy_(torch.log(stop_right / stop_right.sum(dim=0, keepdim=False)))
+        self.stop_left.copy_(torch.log(stop_left / stop_left.sum(dim=0, keepdim=False)))
+        self.root_attach_left.copy_(torch.log(root_attach_left / root_attach_left.sum()))
 
     def _eval_log_density(self, s):
         """
