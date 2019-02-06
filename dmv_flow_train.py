@@ -322,8 +322,8 @@ def main(args):
         if args.em_train:
             with torch.no_grad():
                 pos_seq = model.parse_pos_seq(train_data)
-                acc = model.test(test_data)
-                print("TEST: epoch{}, acc {} before EM setting".format(epoch, acc))
+                # acc = model.test(test_data)
+                # print("TEST: epoch{}, acc {} before EM setting".format(epoch, acc))
                 print("Viterbi EM: set DMV parameters")
                 model.set_dmv_params(train_data, pos_seq)
                 acc = model.test(test_data)
