@@ -45,20 +45,19 @@ class DMVFlow(nn.Module):
         super(DMVFlow, self).__init__()
 
         self.num_state = num_state
-        self.num_dims = num_dims
+        self.num_dims = num_dims + args.pos_emb_dim
         self.pos_emb_dim = args.pos_emb_dim
         self.args = args
         self.device = args.device
 
-        self.hidden_units = num_dims // 2
-        self.lstm_hidden_units = num_dims
+        self.hidden_units = self.num_dims // 2
+        self.lstm_hidden_units = self.num_dims
 
         self.punc_sym = punc_sym
         self.word2vec = word_vec_dict
 
         self.harmonic = False
 
-        self.num_dims += args.pos_emb_dim
 
         self.pos_embed = nn.Embedding(num_state, self.pos_emb_dim)
         self.proj_group = list(self.pos_embed.parameters())
@@ -85,7 +84,7 @@ class DMVFlow(nn.Module):
 
 
         # Gaussian Variance
-        self.var = Parameter(torch.zeros((num_state, num_dims), dtype=torch.float32))
+        self.var = Parameter(torch.zeros((num_state, self.num_dims), dtype=torch.float32))
 
         if not self.args.train_var:
             self.var.requires_grad = False
@@ -162,12 +161,14 @@ class DMVFlow(nn.Module):
         # initialize mean and variance with empirical values
         sents = init_seed.embed
         masks = init_seed.mask
-        sents, _ = self.transform(sents, masks)
 
         if self.pos_emb_dim > 0:
             pos = init_seed.pos
             pos_embed = self.pos_embed(pos)
             sents = torch.cat((sents, pos_embed), dim=-1)
+
+        sents, _ = self.transform(sents, masks)
+
 
         features = sents.size(-1)
         flat_sents = sents.view(-1, features)
@@ -185,14 +186,16 @@ class DMVFlow(nn.Module):
         emb_dict = {}
         cnt_dict = Counter()
         for iter_obj in train_data.data_iter(self.args.batch_size):
-            sents_t, _ = self.transform(iter_obj.embed, iter_obj.mask)
+            sents_t = iter_obj.embed
+            if self.args.pos_emb_dim > 0:
+                pos_embed_t = self.pos_embed(iter_obj.pos)
+                sents_t = torch.cat((sents_t, pos_embed_t), dim=-1)
+
+            sents_t, _ = self.transform(sents_t, iter_obj.mask)
             sents_t = sents_t.transpose(0, 1)
             pos_t = iter_obj.pos.transpose(0, 1)
             mask_t = iter_obj.mask.transpose(0, 1)
 
-            if self.args.pos_emb_dim > 0:
-                pos_embed_t = self.pos_embed(pos_t)
-                sents_t = torch.cat((sents_t, pos_embed_t), dim=-1)
 
             for emb_s, tagid_s, mask_s in zip(sents_t, pos_t, mask_t):
                 for tagid, emb, mask in zip(tagid_s, emb_s, mask_s):
@@ -212,14 +215,15 @@ class DMVFlow(nn.Module):
         emb_dict = {}
         cnt_dict = Counter()
         for iter_obj in train_data.data_iter(self.args.batch_size):
-            sents_t, _ = self.transform(iter_obj.embed, iter_obj.mask)
+            sents_t = iter_obj.embed
+            if self.args.pos_emb_dim > 0:
+                pos_embed_t = self.pos_embed(iter_obj.pos)
+                sents_t = torch.cat((sents_t, pos_embed_t), dim=-1)
+
+            sents_t, _ = self.transform(sents_t, iter_obj.mask)
             sents_t = sents_t.transpose(0, 1)
             pos_t = iter_obj.pos.transpose(0, 1)
             mask_t = iter_obj.mask.transpose(0, 1)
-
-            if self.args.pos_emb_dim > 0:
-                pos_embed_t = self.pos_embed(pos_t)
-                sents_t = torch.cat((sents_t, pos_embed_t), dim=-1)
 
             for emb_s, tagid_s, mask_s in zip(sents_t, pos_t, mask_t):
                 for tagid, emb, mask in zip(tagid_s, emb_s, mask_s):
@@ -235,6 +239,18 @@ class DMVFlow(nn.Module):
         for tagid in emb_dict:
             self.var[tagid] = emb_dict[tagid] / cnt_dict[tagid]
             # self.var[tagid][self.num_dims:].fill_(5.)
+            self.var[tagid][:].fill_(1.)
+
+    def print_param(self):
+        print("attatch left")
+        print(self.attach_left)
+        print("attach right")
+        print(self.attach_right)
+        print("stop left")
+        print(self.stop_left)
+        print("root attach left")
+        print(self.root_attach_left)
+
 
     def transform(self, x, masks=None):
         """
@@ -322,11 +338,13 @@ class DMVFlow(nn.Module):
 
             batch_id_ += 1
             try:
-                sents_t, _ = self.transform(iter_obj.embed, iter_obj.mask)
-
+                sents_t = iter_obj.embed
                 if self.args.pos_emb_dim > 0:
                     pos_embed = self.pos_embed(iter_obj.pos)
                     sents_t = torch.cat((sents_t, pos_embed), dim=-1)
+
+                sents_t, _ = self.transform(sents_t, iter_obj.mask)
+
 
                 sents_t = sents_t.transpose(0, 1)
                 # root_max_index: (batch_size, num_state, seq_length)
@@ -543,7 +561,7 @@ class DMVFlow(nn.Module):
             pos_t = torch.tensor(pos, dtype=torch.long, requires_grad=False, device=self.device)
             pos_embed = self.pos_embed(pos_t)
             embed_t = torch.cat((embed_t, pos_embed), dim=-1)
-            
+
         embed_t, jacob = self.transform(embed_t.unsqueeze(1))
         embed_t = embed_t.squeeze(1)
 

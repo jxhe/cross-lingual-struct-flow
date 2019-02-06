@@ -45,6 +45,7 @@ def init_config():
     parser.add_argument('--init_var', action="store_true", default=False)
     parser.add_argument('--init_mean', action="store_true", default=False)
     parser.add_argument('--pos_emb_dim', type=int, default=0)
+    parser.add_argument('--good_init', action="store_true", default=False)
 
 
 
@@ -183,9 +184,12 @@ def main(args):
     # print("TEST accuracy: {}".format(directed))
 
     best_acc = 0.
+    if args.mode == "unsupervised":
+        nrep = 1
+    else:
+        nrep = 3
 
-    # if args.mode == "supervised_wpos":
-    if args.mode != "unsupervised":
+    if args.good_init:
         print("set DMV paramters directly")
         with torch.no_grad():
             model.set_dmv_params(train_data)
@@ -195,6 +199,7 @@ def main(args):
         print('\nSTARTING TEST: *****acc {}*****\n'.format(acc))
 
     print("begin training")
+    model.print_param()
     batch_flag = False
 
     for epoch in range(args.epochs):
@@ -253,8 +258,9 @@ def main(args):
                 if (cnt+1) % args.batch_size == 0:
                     torch.nn.utils.clip_grad_norm_(model.proj_group, 5.0)
 
-                    if not args.em_train:
-                        prior_optimizer.step()
+                    # if not args.em_train:
+                    #     prior_optimizer.step()
+                    prior_optimizer.step()
                     proj_optimizer.step()
 
                     prior_optimizer.zero_grad()
@@ -271,7 +277,7 @@ def main(args):
                           'max_var %.4f, min_var %.4f time elapsed %.2f sec' % \
                           (epoch, cnt, report_ll[0] / report_num_sents[0], \
                           report_ll[0] / report_num_words[0], model.var.data.max(), \
-                          model.var.data.min(), time.time() - begin_time), file=sys.stderr)
+                          model.var.data.min(), time.time() - begin_time))
 
         else:
             for iter_obj in train_data.data_iter(batch_size=args.batch_size):
@@ -305,7 +311,7 @@ def main(args):
                           'max_var %.4f, min_var %.4f time elapsed %.2f sec' % \
                           (epoch, train_iter, report_ll[0] / report_num_sents[0], \
                           report_ll[0] / report_num_words[0], model.var.data.max(), \
-                          model.var.data.min(), time.time() - begin_time), file=sys.stderr)
+                          model.var.data.min(), time.time() - begin_time))
 
                 # break
 
@@ -323,7 +329,8 @@ def main(args):
                 acc = model.test(test_data)
                 print("TEST: epoch{}, acc {} after EM setting".format(epoch, acc))
 
-        if epoch % 3 == 0:
+        if epoch % nrep == 0:
+            model.print_param()
             with torch.no_grad():
                 # acc = model.test(train_data)
                 # print('\nTRAIN: *****epoch {}, iter {}, acc {}*****\n'.format(

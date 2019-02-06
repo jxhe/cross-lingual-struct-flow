@@ -14,12 +14,12 @@ params_markov={
 }
 
 params_dmv={
-    "couple_layers": 4,
+    "couple_layers": 8,
     "cell_layers": 1,
     "lstm_layers": 2,
     "valid_nepoch": 1,
     "epochs": 50,
-    "batch_size": 32,
+    "batch_size": 16,
     "emb_dir": "fastText_data",
     "train_file": "ud-treebanks-v2.2/UD_Hindi-HDTB/hi_hdtb-ud-train.conllu",
     "val_file": "ud-treebanks-v2.2/UD_Hindi-HDTB/hi_hdtb-ud-dev.conllu",

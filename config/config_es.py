@@ -16,6 +16,7 @@ params_markov={
 params_dmv={
     "couple_layers": 8,
     "cell_layers": 1,
+    "lstm_layers": 2,
     "valid_nepoch": 1,
     "epochs": 50,
     "batch_size": 16,

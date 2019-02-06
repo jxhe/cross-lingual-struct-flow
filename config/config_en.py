@@ -18,7 +18,7 @@ params_dmv={
     "cell_layers": 1,
     "lstm_layers": 2,
     "valid_nepoch": 1,
-    "epochs": 3,
+    "epochs": 50,
     "batch_size": 32,
     "emb_dir": "fastText_data",
     "train_file": "ud-treebanks-v2.2/UD_English-EWT/en_ewt-ud-train.conllu",
