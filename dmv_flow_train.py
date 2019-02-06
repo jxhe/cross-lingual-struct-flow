@@ -46,6 +46,7 @@ def init_config():
     parser.add_argument('--init_mean', action="store_true", default=False)
     parser.add_argument('--pos_emb_dim', type=int, default=0)
     parser.add_argument('--good_init', action="store_true", default=False)
+    parser.add_argument('--up_em', action="store_true", default=False)
 
 
 
@@ -198,6 +199,13 @@ def main(args):
         acc = model.test(test_data)
         print('\nSTARTING TEST: *****acc {}*****\n'.format(acc))
 
+    if args.up_em:
+        with torch.no_grad():
+            print("viterbi e step set parameters")
+            model.up_viterbi_em(train_data)
+            acc = model.test(test_data)
+            print('\n TEST: *****acc {}*****\n'.format(acc))
+
     print("begin training")
     model.print_param()
     batch_flag = False
@@ -299,7 +307,9 @@ def main(args):
 
                 torch.nn.utils.clip_grad_norm_(model.proj_group, 5.0)
                 proj_optimizer.step()
-                prior_optimizer.step()
+
+                if not args.up_em:
+                    prior_optimizer.step()
 
                 report_ll[0] -= nll.item()
                 report_num_words[0] += num_words
@@ -328,6 +338,11 @@ def main(args):
                 model.set_dmv_params(train_data, pos_seq)
                 acc = model.test(test_data)
                 print("TEST: epoch{}, acc {} after EM setting".format(epoch, acc))
+
+        if args.up_em:
+            with torch.no_grad():
+                print("unsupervised em set parameters")
+                model.up_viterbi_em(train_data)
 
         if epoch % nrep == 0:
             model.print_param()
