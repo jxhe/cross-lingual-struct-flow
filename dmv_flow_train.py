@@ -207,7 +207,7 @@ def main(args):
             print('\n TEST: *****acc {}*****\n'.format(acc))
 
     print("begin training")
-    model.print_param()
+    # model.print_param()
     batch_flag = False
 
     for epoch in range(args.epochs):
@@ -306,6 +306,7 @@ def main(args):
                 avg_ll_loss.backward()
 
                 torch.nn.utils.clip_grad_norm_(model.proj_group, 5.0)
+                # torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
                 proj_optimizer.step()
 
                 if not args.up_em:
@@ -345,7 +346,7 @@ def main(args):
                 model.up_viterbi_em(train_data)
 
         if epoch % nrep == 0:
-            model.print_param()
+            # model.print_param()
             with torch.no_grad():
                 # acc = model.test(train_data)
                 # print('\nTRAIN: *****epoch {}, iter {}, acc {}*****\n'.format(

@@ -59,10 +59,14 @@ class DMVFlow(nn.Module):
         self.harmonic = False
 
 
-        self.pos_embed = nn.Embedding(num_state, self.pos_emb_dim)
-        self.proj_group = list(self.pos_embed.parameters())
-        if args.freeze_pos_emb:
-            self.pos_embed.weight.requires_grad = False
+
+        if self.pos_emb_dim > 0:
+            self.pos_embed = nn.Embedding(num_state, self.pos_emb_dim)
+            self.proj_group = list(self.pos_embed.parameters())
+            if args.freeze_pos_emb:
+                self.pos_embed.weight.requires_grad = False
+        else:
+            self.proj_group = []
 
 
         self.means = Parameter(torch.Tensor(self.num_state, self.num_dims))
@@ -130,6 +134,8 @@ class DMVFlow(nn.Module):
 
         if self.args.load_nice != '':
             self.load_state_dict(torch.load(self.args.load_nice), strict=True)
+
+            self.proj_layer.reset_parameters()
             if self.args.init_mean:
                 self.init_mean(train_data)
 
@@ -238,8 +244,8 @@ class DMVFlow(nn.Module):
 
         for tagid in emb_dict:
             self.var[tagid] = emb_dict[tagid] / cnt_dict[tagid]
-            # self.var[tagid][self.num_dims:].fill_(5.)
-            self.var[tagid][:].fill_(1.)
+            self.var[tagid][300:].fill_(1.)
+            # self.var[tagid][:].fill_(1.)
 
     def print_param(self):
         print("attatch left")
@@ -269,8 +275,8 @@ class DMVFlow(nn.Module):
     def tree_to_depset(self, root_max_index, sent_len):
         """
         Args:
-            root_max_index: (batch_size, 2), [:0] represents the 
-                            optimal state, [:1] represents the 
+            root_max_index: (batch_size, 2), [:0] represents the
+                            optimal state, [:1] represents the
                             optimal index (location)
         """
         # add the root symbol (-1)
@@ -405,14 +411,15 @@ class DMVFlow(nn.Module):
         stop_left = self.stop_left.new_ones((2, self.num_state, 2))
 
         root_attach_left = self.root_attach_left.new_ones(self.num_state)
-        for iter_obj in train_data.data_iter(batch_size=batch_size,
+        for iter_obj in train_data.data_iter(batch_size=self.args.batch_size,
                                              shuffle=False):
             sents_t = iter_obj.embed
             if self.args.pos_emb_dim > 0:
                 pos_embed = self.pos_embed(iter_obj.pos)
                 sents_t = torch.cat((sents_t, pos_embed), dim=-1)
 
-            sents_t, _ = self.transform(sents_t, iter_obj.mask)            
+            sents_t, _ = self.transform(sents_t, iter_obj.mask)
+            sents_t = sents_t.transpose(0, 1)
 
             # root_max_index: (batch_size, num_state, seq_length)
             batch_size, seq_length, _ = sents_t.size()
@@ -443,7 +450,7 @@ class DMVFlow(nn.Module):
 
                 for i in range(length):
                     head_id = s[i][1]
-                    head_pos = s[head][2]
+                    head_pos = s[head_id][2]
                     dep_pos = s[i][2]
                     dep_id = s[i][0]
 
@@ -472,7 +479,7 @@ class DMVFlow(nn.Module):
                         stop_right[1, dep_pos, 0] += 1
                     else:
                         stop_right[1, dep_pos, 1] += 1
-        
+
         self.attach_left.copy_(torch.log(attach_left / attach_left.sum(dim=1, keepdim=True)))
         self.attach_right.copy_(torch.log(attach_right / attach_right.sum(dim=1, keepdim=True)))
 
