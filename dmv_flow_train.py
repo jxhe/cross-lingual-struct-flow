@@ -47,6 +47,8 @@ def init_config():
     parser.add_argument('--pos_emb_dim', type=int, default=0)
     parser.add_argument('--good_init', action="store_true", default=False)
     parser.add_argument('--up_em', action="store_true", default=False)
+    parser.add_argument('--beta', type=float, default=0., help="regularize params")
+
 
 
 
@@ -302,6 +304,9 @@ def main(args):
                     raise ValueError("{} mode is not supported".format(args.mode))
 
                 avg_ll_loss = (nll + jacobian_loss) / batch_size
+
+                if args.beta > 0:
+                    avg_ll_loss = avg_ll_loss + model.MLE_loss()
 
                 avg_ll_loss.backward()
 

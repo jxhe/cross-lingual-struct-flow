@@ -135,12 +135,18 @@ class DMVFlow(nn.Module):
         if self.args.load_nice != '':
             self.load_state_dict(torch.load(self.args.load_nice), strict=True)
 
-            self.proj_layer.reset_parameters()
-            if self.args.init_mean:
-                self.init_mean(train_data)
+            self.attach_left_init = self.attach_left.clone()
+            self.attach_right_init = self.attach_right.clone()
+            self.stop_left_init = self.stop_left.clone()
+            self.stop_right_init = self.stop_right.clone()
+            self.root_attach_left_init = self.root_attach_left.clone()
 
-            if self.args.init_var:
-                self.init_var(train_data)
+            # self.proj_layer.reset_parameters()
+            # if self.args.init_mean:
+            #     self.init_mean(train_data)
+
+            # if self.args.init_var:
+            #     self.init_var(train_data)
             return
 
         if self.args.load_gaussian != '':
@@ -402,6 +408,16 @@ class DMVFlow(nn.Module):
                     d += 1
 
         return d, l
+
+    def MLE_loss(self):
+        # diff1 = ((self.means - self.means_init) ** 2).sum()
+        diff = ((self.attach_left - self.attach_left_init) ** 2).sum()
+        diff = diff + ((self.attach_right - self.attach_right_init) ** 2).sum()
+        diff = diff + ((self.stop_left - self.stop_left_init) ** 2).sum()
+        diff = diff + ((self.stop_right - self.stop_right_init) ** 2).sum()
+        diff = diff + ((self.root_attach_left - self.root_attach_left_init) ** 2).sum()
+
+        return 0.5 * self.args.beta * diff
 
     def up_viterbi_em(self, train_data):
         attach_left = self.attach_left.new_ones((self.num_state, self.num_state))
