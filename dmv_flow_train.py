@@ -36,6 +36,7 @@ def init_config():
     parser.add_argument('--proj_lr', type=float, default=0.001)
     parser.add_argument('--prob_const', type=float, default=1.0)
     parser.add_argument('--max_len', type=int, default=10)
+    parser.add_argument('--train_max_len', type=int, default=20)
     parser.add_argument('--train_var', action="store_true", default=False)
     parser.add_argument('--freeze_prior', action="store_true", default=False)
     parser.add_argument('--freeze_proj', action="store_true", default=False)
@@ -110,7 +111,7 @@ def main(args):
     args.device = device
 
     if args.mode == "unsupervised":
-        train_max_len = 20
+        train_max_len = args.train_max_len
     else:
         train_max_len = args.max_len
 
@@ -267,6 +268,7 @@ def main(args):
 
                 if (cnt+1) % args.batch_size == 0:
                     torch.nn.utils.clip_grad_norm_(model.proj_group, 5.0)
+                    torch.nn.utils.clip_grad_norm_(model.prior_group, 5.0)
 
                     # if not args.em_train:
                     #     prior_optimizer.step()

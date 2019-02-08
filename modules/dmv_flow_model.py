@@ -366,6 +366,7 @@ class DMVFlow(nn.Module):
                 sents_t = sents_t.transpose(0, 1)
                 # root_max_index: (batch_size, num_state, seq_length)
                 batch_size, seq_length, _ = sents_t.size()
+                # print("length {}".format(seq_length))
                 symbol_index_t = self.attach_left.new([[[p, q] for q in range(seq_length)] \
                                                       for p in range(self.num_state)]) \
                                                       .expand(batch_size, self.num_state, seq_length, 2)
