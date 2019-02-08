@@ -166,3 +166,42 @@ class ConlluData(object):
                 batch_embed, batch_pos, batch_head, batch_right_num_deps, batch_left_num_deps)
 
             yield IterObj(embed_t, pos_t, head_t, r_deps_t, l_deps_t, masks_t)
+
+    def data_iter_efficient(self, mem_limit=300):
+        """This function batches same-length sentences together,
+        with a memory limit that satisfies batch_size x length <= mem_limit.
+        Such batching is only used in test to accelarate evaluation
+        """
+
+        sents_len = np.array([len(sent) for sent in self.postags])
+        sort_idx = np.argsort(sents_len)
+        sort_len = sents_len[sort_idx]
+
+        # record the locations where length changes
+        change_loc = []
+        for i in range(1, len(sort_len)):
+            if sort_len[i] != sort_len[i-1]:
+                change_loc.append(i)
+        change_loc.append(len(sort_len))
+
+        curr = 0
+        for idx in change_loc:
+            while curr < idx:
+                batch_data = []
+                length = sent_len[curr]
+                batch_size = mem_limit // length
+                next_ = min(curr + batch_size, idx)
+                index_ = [sort_idx[x] for x range(curr, next_)]
+
+                curr = next_
+
+                batch_embed = [self.embed[x] for x in index_]
+                batch_pos = [self.postags[x] for x in index_]
+                batch_head = [self.heads[x] for x in index_]
+                batch_right_num_deps = [self.right_num_deps[x] for x in index_]
+                batch_left_num_deps = [self.left_num_deps[x] for x in index_]
+
+                embed_t, pos_t, head_t, r_deps_t, l_deps_t, masks_t = self.to_input_tensor(
+                    batch_embed, batch_pos, batch_head, batch_right_num_deps, batch_left_num_deps)
+
+                yield IterObj(embed_t, pos_t, head_t, r_deps_t, l_deps_t, masks_t)
