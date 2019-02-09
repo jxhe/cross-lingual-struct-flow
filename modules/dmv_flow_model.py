@@ -253,8 +253,8 @@ class DMVFlow(nn.Module):
 
         for tagid in emb_dict:
             self.var[tagid] = emb_dict[tagid] / cnt_dict[tagid]
-            self.var[tagid][300:].fill_(1.)
-            # self.var[tagid][:].fill_(1.)
+            # self.var[tagid][300:].fill_(1.)
+            self.var[tagid][:].fill_(1.)
 
     def print_param(self):
         print("attatch left")
