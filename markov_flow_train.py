@@ -27,16 +27,19 @@ def init_config():
     parser.add_argument('--mode',
                          choices=['supervised', 'unsupervised', 'both', 'eval'],
                          default='supervised')
+
+    # optimization params
+    parser.add_argument('--opt', choices=['adam', 'sgd'], default='adam')
+    parser.add_argument('--prior_lr', type=float, default=0.001)
+    parser.add_argument('--proj_lr', type=float, default=0.001)
     parser.add_argument('--freeze_proj', action='store_true', default=False)
     parser.add_argument('--freeze_prior', action='store_true', default=False)
     parser.add_argument('--freeze_mean', action='store_true', default=False)
     parser.add_argument('--train_var', action='store_true', default=False,
             help="if make variance variable trainable")
+    parser.add_argument('--init_var_one', action='store_true', default=False)
+    parser.add_argument('--aggressive', action='store_true', default=False)
     parser.add_argument('--beta', type=float, default=0., help="regularize params")
-
-    # optimization params
-    parser.add_argument('--opt', choices=['adam', 'sgd'], default='adam')
-    parser.add_argument('--lr', type=float, default=0.001)
 
     # pretrained model options
     parser.add_argument('--load_nice', default='', type=str,
@@ -140,7 +143,8 @@ def main(args):
     #           % (accuracy, vm, model.var.data.max(), model.var.data.min()), file=sys.stderr)
     #     return
 
-    opt_dict = {"not_improved": 0, "lr": 0., "best_score": 0}
+    opt_dict = {"not_improved": 0, "prior_lr": args.prior_lr, 
+                "proj_lr": args.proj_lr, "best_score": 0}
 
     if args.mode == "eval":
         model.eval()
@@ -152,18 +156,13 @@ def main(args):
         return
 
     if args.opt == "adam":
-        optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-        opt_dict["lr"] = args.lr
+        prior_optimizer = torch.optim.Adam(model.prior_group, lr=args.prior_lr)
+        proj_optimizer = torch.optim.Adam(model.prior_group, lr=args.proj_lr)
     elif args.opt == "sgd":
-        optimizer = torch.optim.SGD(model.parameters(), lr=1.)
-        opt_dict["lr"] = 1.
+        prior_optimizer = torch.optim.SGD(model.prior_group, lr=args.prior_lr)
+        proj_optimizer = torch.optim.SGD(model.proj_group, lr=args.proj_lr)
     else:
         raise ValueError("{} is not supported".format(args.opt))
-
-    if args.mode == "unsupervised":
-        prior_optimizer = torch.optim.Adam([model.tparams], lr=0.001)
-        proj_optimizer = torch.optim.Adam(list(model.nice_layer.parameters()), lr=args.lr)
-        opt_dict["lr"] = args.lr
 
     begin_time = time.time()
     print('begin training')
@@ -187,7 +186,7 @@ def main(args):
         for sents, tags in data_iter(list(zip(train_vec, train_tag_ids)), batch_size=args.batch_size,
                                label=True, shuffle=True):
 
-            if args.mode == "unsupervised":
+            if args.aggressive:
                 inner_iter = 0
                 for sents_tmp, tags_tmp in data_iter(list(zip(train_vec, train_tag_ids)), batch_size=args.batch_size,
                                                      label=True, shuffle=True):
@@ -237,7 +236,7 @@ def main(args):
 
             avg_ll_loss.backward()
 
-            torch.nn.utils.clip_grad_norm_(model.nice_layer.parameters(), 5.0)
+            torch.nn.utils.clip_grad_norm_(model.proj_group, 5.0)
             # torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
 
             # optimizer.step()
@@ -285,8 +284,7 @@ def main(args):
                 torch.save(model.state_dict(), args.save_path)
             else:
                 opt_dict["not_improved"] += 1
-                if opt_dict["not_improved"] >= 5:
-                    opt_dict["best_score"] = acc
+                if opt_dict["not_improved"] >= 2:
                     opt_dict["not_improved"] = 0
                     opt_dict["lr"] = opt_dict["lr"] * lr_decay
                     model.load_state_dict(torch.load(args.save_path))

@@ -188,7 +188,7 @@ def main(args):
             model.set_dmv_params(train_data)
 
     with torch.no_grad():
-        acc = model.test(test_data)
+        acc_test = model.test(test_data)
         print('\nSTARTING TEST: *****acc {}*****\n'.format(acc))
 
     if args.up_em:
