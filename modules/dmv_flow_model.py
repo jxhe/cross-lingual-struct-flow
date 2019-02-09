@@ -141,6 +141,9 @@ class DMVFlow(nn.Module):
             self.stop_right_init = self.stop_right.clone()
             self.root_attach_left_init = self.root_attach_left.clone()
 
+            self.means_init = self.means.clone()
+            self.proj_init = [param.clone() for param in self.proj_layer.parameters()]
+
             # self.proj_layer.reset_parameters()
             # if self.args.init_mean:
             #     self.init_mean(train_data)
@@ -417,6 +420,10 @@ class DMVFlow(nn.Module):
         diff = diff + ((self.stop_left - self.stop_left_init) ** 2).sum()
         diff = diff + ((self.stop_right - self.stop_right_init) ** 2).sum()
         diff = diff + ((self.root_attach_left - self.root_attach_left_init) ** 2).sum()
+
+        diff = diff + ((self.means - self.means_init) ** 2).sum()
+        for i, param in enumerate(self.proj_layer.parameters()):
+            diff = diff + ((self.proj_init[i] - param) ** 2).sum()
 
         return 0.5 * self.args.beta * diff
 
