@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 from __future__ import print_function
 
 import pickle
@@ -236,7 +237,11 @@ def main(args):
 
             avg_ll_loss.backward()
 
-            torch.nn.utils.clip_grad_norm_(model.proj_group, 5.0)
+            if args.mode != "unsupervised":
+                # torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
+                torch.nn.utils.clip_grad_norm_(model.proj_layer.parameters(), 5.0)
+            else:
+                torch.nn.utils.clip_grad_norm_(model.proj_group, 5.0)
             # torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
 
             # optimizer.step()
@@ -256,7 +261,7 @@ def main(args):
                 print('epoch %d, iter %d, log_likelihood %.2f, jacobian %.2f, obj %.2f, max_var %.4f ' \
                       'min_var %.4f time elapsed %.2f sec' % (epoch, train_iter, report_ll / report_num_words, \
                       report_jc / report_num_words, report_obj / report_num_words, model.var.max(), \
-                      model.var.min(), time.time() - begin_time), file=sys.stderr)
+                      model.var.min(), time.time() - begin_time))
 
                 # if args.mode == "unsupervised":
                 #     with torch.no_grad():
@@ -269,7 +274,7 @@ def main(args):
 
         print('\nepoch %d, log_likelihood %.2f, jacobian %.2f, obj %.2f\n' % \
             (epoch, report_ll / report_num_words, report_jc / report_num_words,
-             report_obj / report_num_words), file=sys.stderr)
+             report_obj / report_num_words))
 
         model.eval()
         if args.mode == "supervised":
@@ -292,11 +297,11 @@ def main(args):
                     print("new prior lr: {}".format(opt_dict["prior_lr"]))
                     print("new proj lr: {}".format(opt_dict["proj_lr"]))
                     if args.opt == "adam":
-                        prior_optimizer = torch.optim.Adam(model.prior_group, lr=args.prior_lr)
-                        proj_optimizer = torch.optim.Adam(model.proj_group, lr=args.proj_lr)
+                        prior_optimizer = torch.optim.Adam(model.prior_group, lr=opt_dict["prior_lr"])
+                        proj_optimizer = torch.optim.Adam(model.proj_group, lr=opt_dict["proj_lr"])
                     elif args.opt == "sgd":
-                        prior_optimizer = torch.optim.SGD(model.prior_group, lr=args.prior_lr)
-                        proj_optimizer = torch.optim.SGD(model.proj_group, lr=args.proj_lr)
+                        prior_optimizer = torch.optim.SGD(model.prior_group, lr=opt_dict["prior_lr"])
+                        proj_optimizer = torch.optim.SGD(model.proj_group, lr=opt_dict["proj_lr"])
                     else:
                         raise ValueError("{} is not supported".format(args.opt))
         else:

@@ -189,7 +189,7 @@ def main(args):
 
     with torch.no_grad():
         acc_test = model.test(test_data)
-        print('\nSTARTING TEST: *****acc {}*****\n'.format(acc))
+        print('\nSTARTING TEST: *****acc {}*****\n'.format(acc_test))
 
     if args.up_em:
         with torch.no_grad():

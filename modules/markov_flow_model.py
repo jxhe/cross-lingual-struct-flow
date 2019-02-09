@@ -121,7 +121,7 @@ class MarkovFlow(nn.Module):
         # initialize mean and variance with empirical values
         with torch.no_grad():
             sents, tags, masks = init_seed
-            sents, _ = self.transform(sents)
+            sents, _ = self.transform(sents, masks)
             seq_length, _, features = sents.size()
             flat_sents = sents.view(-1, features)
             seed_mean = torch.sum(masks.view(-1, 1).expand_as(flat_sents) *
@@ -148,15 +148,15 @@ class MarkovFlow(nn.Module):
         return -self.num_dims/2.0 * (math.log(2) + \
                 math.log(np.pi)) - 0.5 * torch.sum(torch.log(self.var))
 
-    def transform(self, x):
+    def transform(self, x, masks=None):
         """
         Args:
             x: (sent_length, batch_size, num_dims)
         """
         jacobian_loss = torch.zeros(1, device=self.device, requires_grad=False)
 
-        if self.args.model == 'nice':
-            x, jacobian_loss_new = self.proj_layer(x)
+        if self.args.model != 'gaussian':
+            x, jacobian_loss_new = self.proj_layer(x, masks)
             jacobian_loss = jacobian_loss + jacobian_loss_new
 
 
@@ -186,7 +186,7 @@ class MarkovFlow(nn.Module):
 
         """
         max_length, batch_size, _ = sents.size()
-        sents, jacobian_loss = self.transform(sents)
+        sents, jacobian_loss = self.transform(sents, masks)
 
         assert self.var.data.min() > 0
 
@@ -223,7 +223,7 @@ class MarkovFlow(nn.Module):
         sent_len, batch_size, _ = sents.size()
 
         # (sent_length, batch_size, num_dims)
-        sents, jacobian_loss = self.transform(sents)
+        sents, jacobian_loss = self.transform(sents, masks)
 
         # ()
         log_density_c = self._calc_log_density_c()
@@ -442,7 +442,7 @@ class MarkovFlow(nn.Module):
                                                      tags,
                                                      pad,
                                                      device=self.device)
-            sents_t, _ = self.transform(sents_t)
+            sents_t, _ = self.transform(sents_t, masks)
 
             # index: (batch_size, seq_length)
             index = self._viterbi(sents_t, masks)
@@ -508,7 +508,7 @@ class MarkovFlow(nn.Module):
                                                      tags,
                                                      pad,
                                                      device=self.device)
-            sents_t, _ = self.transform(sents_t)
+            sents_t, _ = self.transform(sents_t, masks)
 
             # index: (batch_size, seq_length)
             index = self._viterbi(sents_t, masks)
