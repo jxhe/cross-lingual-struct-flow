@@ -23,7 +23,7 @@ def init_config():
     parser.add_argument('--lang', type=str, help='language')
 
     # model config
-    parser.add_argument('--model', choices=['gaussian', 'nice'], default='gaussian')
+    parser.add_argument('--model', choices=['gaussian', 'nice', 'lstmnice'], default='gaussian')
     parser.add_argument('--mode',
                          choices=['supervised', 'unsupervised', 'both', 'eval'],
                          default='supervised')
@@ -143,7 +143,7 @@ def main(args):
     #           % (accuracy, vm, model.var.data.max(), model.var.data.min()), file=sys.stderr)
     #     return
 
-    opt_dict = {"not_improved": 0, "prior_lr": args.prior_lr, 
+    opt_dict = {"not_improved": 0, "prior_lr": args.prior_lr,
                 "proj_lr": args.proj_lr, "best_score": 0}
 
     if args.mode == "eval":
@@ -157,7 +157,7 @@ def main(args):
 
     if args.opt == "adam":
         prior_optimizer = torch.optim.Adam(model.prior_group, lr=args.prior_lr)
-        proj_optimizer = torch.optim.Adam(model.prior_group, lr=args.proj_lr)
+        proj_optimizer = torch.optim.Adam(model.proj_group, lr=args.proj_lr)
     elif args.opt == "sgd":
         prior_optimizer = torch.optim.SGD(model.prior_group, lr=args.prior_lr)
         proj_optimizer = torch.optim.SGD(model.proj_group, lr=args.proj_lr)
@@ -286,13 +286,19 @@ def main(args):
                 opt_dict["not_improved"] += 1
                 if opt_dict["not_improved"] >= 2:
                     opt_dict["not_improved"] = 0
-                    opt_dict["lr"] = opt_dict["lr"] * lr_decay
+                    opt_dict["prior_lr"] = opt_dict["prior_lr"] * lr_decay
+                    opt_dict["proj_lr"] = opt_dict["proj_lr"] * lr_decay
                     model.load_state_dict(torch.load(args.save_path))
-                    print("new lr: {}".format(opt_dict["lr"]))
+                    print("new prior lr: {}".format(opt_dict["prior_lr"]))
+                    print("new proj lr: {}".format(opt_dict["proj_lr"]))
                     if args.opt == "adam":
-                        optimizer = torch.optim.Adam(model.parameters(), lr=opt_dict["lr"])
+                        prior_optimizer = torch.optim.Adam(model.prior_group, lr=args.prior_lr)
+                        proj_optimizer = torch.optim.Adam(model.proj_group, lr=args.proj_lr)
                     elif args.opt == "sgd":
-                        optimizer = torch.optim.SGD(model.parameters(), lr=opt_dict["lr"])
+                        prior_optimizer = torch.optim.SGD(model.prior_group, lr=args.prior_lr)
+                        proj_optimizer = torch.optim.SGD(model.proj_group, lr=args.proj_lr)
+                    else:
+                        raise ValueError("{} is not supported".format(args.opt))
         else:
             torch.save(model.state_dict(), args.save_path)
 

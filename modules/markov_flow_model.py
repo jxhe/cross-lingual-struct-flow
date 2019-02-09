@@ -74,10 +74,10 @@ class MarkovFlow(nn.Module):
             for param in self.proj_layer.parameters():
                 param.requires_grad = False
 
-        if args.model = "gaussian":
+        if args.model == "gaussian":
             self.proj_group = [self.means, self.var]
         else:
-            self.proj_group += list(self.proj_layer.parameters()) + [self.means, self.var]
+            self.proj_group = list(self.proj_layer.parameters()) + [self.means, self.var]
 
         # prior
         self.pi = torch.zeros(self.num_state,
@@ -101,7 +101,7 @@ class MarkovFlow(nn.Module):
 
         # load pretrained model
         if self.args.load_nice != '':
-            self.load_state_dict(torch.load(self.args.load_nice), strict=False)
+            self.load_state_dict(torch.load(self.args.load_nice), strict=True)
 
             self.means_init = self.means.clone()
             self.tparams_init = self.tparams.clone()

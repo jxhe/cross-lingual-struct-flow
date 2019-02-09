@@ -154,13 +154,13 @@ def data_iter(data, batch_size, label=False, shuffle=True):
         batch_data = [data[index] for index in batch_ids]
 
         if label:
-            batch_data.sort(key=lambda e: -len(e[0]))
+            # batch_data.sort(key=lambda e: -len(e[0]))
             test_data = [data_tuple[0] for data_tuple in batch_data]
             tags = [data_tuple[1] for data_tuple in batch_data]
             yield test_data, tags
 
         else:
-            batch_data.sort(key=lambda e: -len(e))
+            # batch_data.sort(key=lambda e: -len(e))
             yield batch_data
 
 def generate_seed(data, tags, size, shuffle=True):
