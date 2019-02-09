@@ -38,32 +38,46 @@ class MarkovFlow(nn.Module):
         self.couple_layers = args.couple_layers
         self.cell_layers = args.cell_layers
         self.hidden_units = num_dims // 2
+        self.lstm_hidden_units = self.num_dims
 
         # transition parameters in log space
         self.tparams = Parameter(
             torch.Tensor(self.num_state, self.num_state))
+
+        self.prior_group = [self.tparams]
 
         # Gaussian means
         self.means = Parameter(torch.Tensor(self.num_state, self.num_dims))
 
         if args.mode == "unsupervised" and args.freeze_prior:
             self.tparams.requires_grad = False
-            self.means.requires_grad = False
 
         if args.mode == "unsupervised" and args.freeze_mean:
             self.means.requires_grad = False
 
         if args.model == 'nice':
-            self.nice_layer = NICETrans(self.couple_layers,
+            self.proj_layer = NICETrans(self.couple_layers,
                                         self.cell_layers,
                                         self.hidden_units,
                                         self.num_dims,
                                         self.device)
+        elif args.model == "lstmnice":
+            self.proj_layer = LSTMNICE(self.args.lstm_layers,
+                                       self.args.couple_layers,
+                                       self.args.cell_layers,
+                                       self.lstm_hidden_units,
+                                       self.hidden_units,
+                                       self.num_dims,
+                                       self.device)
 
         if args.mode == "unsupervised" and args.freeze_proj:
-            for param in self.nice_layer.parameters():
+            for param in self.proj_layer.parameters():
                 param.requires_grad = False
 
+        if args.model = "gaussian":
+            self.proj_group = [self.means, self.var]
+        else:
+            self.proj_group += list(self.proj_layer.parameters()) + [self.means, self.var]
 
         # prior
         self.pi = torch.zeros(self.num_state,
@@ -91,7 +105,7 @@ class MarkovFlow(nn.Module):
 
             self.means_init = self.means.clone()
             self.tparams_init = self.tparams.clone()
-            self.proj_init = [param.clone() for param in self.nice_layer.parameters()]
+            self.proj_init = [param.clone() for param in self.proj_layer.parameters()]
 
             # self.means_init.requires_grad = False
             # self.tparams_init.requires_grad = False
@@ -124,6 +138,9 @@ class MarkovFlow(nn.Module):
                 self.means.data.normal_().mul_(0.04)
                 self.means.data.add_(seed_mean.data.expand_as(self.means.data))
 
+            if self.args.init_var_one:
+                self.var.fill_(1.0)
+
     def _calc_log_density_c(self):
         # return -self.num_dims/2.0 * (math.log(2) + \
         #         math.log(np.pi)) - 0.5 * self.num_dims * (torch.log(self.var))
@@ -139,7 +156,7 @@ class MarkovFlow(nn.Module):
         jacobian_loss = torch.zeros(1, device=self.device, requires_grad=False)
 
         if self.args.model == 'nice':
-            x, jacobian_loss_new = self.nice_layer(x)
+            x, jacobian_loss_new = self.proj_layer(x)
             jacobian_loss = jacobian_loss + jacobian_loss_new
 
 
@@ -151,7 +168,7 @@ class MarkovFlow(nn.Module):
 
         # diff = diff1 + diff2
 
-        # for i, param in enumerate(self.nice_layer.parameters()):
+        # for i, param in enumerate(self.proj_layer.parameters()):
         #     diff = diff + ((self.proj_init[i] - param) ** 2).sum()
 
         return 0.5 * self.args.beta * diff2
