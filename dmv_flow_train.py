@@ -333,8 +333,8 @@ def main(args):
                 # print("TEST: epoch{}, acc {} before EM setting".format(epoch, acc))
                 print("Viterbi EM: set DMV parameters")
                 model.set_dmv_params(train_data, pos_seq)
-                acc = model.test(test_data)
-                print("TEST: epoch{}, acc {} after EM setting".format(epoch, acc))
+                # acc = model.test(test_data)
+                # print("TEST: epoch{}, acc {} after EM setting".format(epoch, acc))
 
         if args.up_em:
             with torch.no_grad():
@@ -351,35 +351,32 @@ def main(args):
                 print('\nTEST: *****epoch {}, iter {}, acc {}*****\n'.format(
                     epoch, train_iter, acc))
 
-        if args.mode == "supervised_wpos" or args.mode == "supervised_wopos":
-            with torch.no_grad():
-                acc = model.test(val_data)
-                print('\nDEV: *****epoch {}, iter {}, acc {}*****\n'.format(
-                    epoch, train_iter, acc))
+        # if args.mode == "supervised_wpos" or args.mode == "supervised_wopos":
+        #     with torch.no_grad():
+        #         acc = model.test(val_data)
+        #         print('\nDEV: *****epoch {}, iter {}, acc {}*****\n'.format(
+        #             epoch, train_iter, acc))
 
-            if acc > opt_dict["best_score"]:
-                opt_dict["best_score"] = acc
-                opt_dict["not_improved"] = 0
-                torch.save(model.state_dict(), args.save_path)
-            else:
-                opt_dict["not_improved"] += 1
-                if opt_dict["not_improved"] >= 2:
-                    opt_dict["not_improved"] = 0
-                    opt_dict["prior_lr"] = opt_dict["prior_lr"] * lr_decay
-                    opt_dict["proj_lr"] = opt_dict["proj_lr"] * lr_decay
-                    model.load_state_dict(torch.load(args.save_path))
-                    print("new prior lr decay: {}".format(opt_dict["prior_lr"]))
-                    print("new proj lr decay: {}".format(opt_dict["proj_lr"]))
-                    if args.opt == "adam":
-                        prior_optimizer = torch.optim.Adam(model.prior_group, lr=opt_dict["prior_lr"])
-                        proj_optimizer = torch.optim.Adam(model.proj_group, lr=opt_dict["proj_lr"])
-                    elif args.opt == "sgd":
-                        prior_optimizer = torch.optim.SGD(model.prior_group, lr=opt_dict["prior_lr"])
-                        proj_optimizer = torch.optim.SGD(model. proj_group, lr=opt_dict["proj_lr"])
-        else:
-            torch.save(model.state_dict(), args.save_path)
+        #     if acc > opt_dict["best_score"]:
+        #         opt_dict["best_score"] = acc
+        #         opt_dict["not_improved"] = 0
+        #         torch.save(model.state_dict(), args.save_path)
+        #     else:
+        #         opt_dict["not_improved"] += 1
+        #         if opt_dict["not_improved"] >= 2:
+        #             opt_dict["not_improved"] = 0
+        #             opt_dict["prior_lr"] = opt_dict["prior_lr"] * lr_decay
+        #             opt_dict["proj_lr"] = opt_dict["proj_lr"] * lr_decay
+        #             model.load_state_dict(torch.load(args.save_path))
+        #             print("new prior lr decay: {}".format(opt_dict["prior_lr"]))
+        #             print("new proj lr decay: {}".format(opt_dict["proj_lr"]))
+        #             prior_optimizer = torch.optim.Adam(model.prior_group, lr=opt_dict["prior_lr"])
+        #             proj_optimizer = torch.optim.Adam(model.proj_group, lr=opt_dict["proj_lr"])
+        # else:
+        #     torch.save(model.state_dict(), args.save_path)
 
-        # torch.save(model.state_dict(), args.save_path)
+        torch.save(model.state_dict(), args.save_path)
+
     with torch.no_grad():
         # acc = model.test(train_data)
         # print('\nTRAIN: *****epoch {}, iter {}, acc {}*****\n'.format(
