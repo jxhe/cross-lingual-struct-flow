@@ -87,7 +87,7 @@ class MarkovFlow(nn.Module):
 
         self.pi = torch.log(self.pi)
 
-    def init_params(self, init_seed):
+    def init_params(self, train_data):
         """
         init_seed:(sents, masks)
         sents: (seq_length, batch_size, features)
@@ -142,7 +142,8 @@ class MarkovFlow(nn.Module):
         #         self.var.fill_(1.0)
 
         self.init_mean(train_data)
-        self.init_var(train_data)
+        self.var.fill_(0.1)
+        # self.init_var(train_data)
 
         if self.args.init_var_one:
             self.var.fill_(1.0)
@@ -152,10 +153,6 @@ class MarkovFlow(nn.Module):
         cnt_dict = Counter()
         for iter_obj in train_data.data_iter(self.args.batch_size):
             sents_t = iter_obj.embed
-            if self.args.pos_emb_dim > 0:
-                pos_embed_t = self.pos_embed(iter_obj.pos)
-                sents_t = torch.cat((sents_t, pos_embed_t), dim=-1)
-
             sents_t, _ = self.transform(sents_t, iter_obj.mask)
             sents_t = sents_t.transpose(0, 1)
             pos_t = iter_obj.pos.transpose(0, 1)
@@ -181,9 +178,6 @@ class MarkovFlow(nn.Module):
         cnt_dict = Counter()
         for iter_obj in train_data.data_iter(self.args.batch_size):
             sents_t = iter_obj.embed
-            if self.args.pos_emb_dim > 0:
-                pos_embed_t = self.pos_embed(iter_obj.pos)
-                sents_t = torch.cat((sents_t, pos_embed_t), dim=-1)
 
             sents_t, _ = self.transform(sents_t, iter_obj.mask)
             sents_t = sents_t.transpose(0, 1)
@@ -301,14 +295,14 @@ class MarkovFlow(nn.Module):
         # (sent_len, batch_size, num_dims)
         means = torch.gather(means, dim=2, index=tag_id).squeeze(2)
         var = self.var.view(1, 1, self.num_state, self.num_dims)
-        var = var.expand(sent_len, batch_size, 
+        var = var.expand(sent_len, batch_size,
             self.num_state, self.num_dims)
         var = torch.gather(var, dim=2, index=tag_id).squeeze(2)
 
         # (sent_len, batch_size)
         log_density_c = log_density_c.view(1, 1, self.num_state)
         log_density_c = log_density_c.expand(sent_len, batch_size, self.num_state)
-        log_density_c = torch.gather(log_density_c, dim=2, index=pos.unsqueeze(2)).squeeze(2)
+        log_density_c = torch.gather(log_density_c, dim=2, index=tags.unsqueeze(2)).squeeze(2)
 
         # (sent_len, batch_size)
         log_emission_prob = log_density_c - \
@@ -501,7 +495,7 @@ class MarkovFlow(nn.Module):
         for iter_obj in test_data.data_iter(batch_size=self.args.batch_size,
                                             shuffle=False):
             sents_t = iter_obj.embed
-            masks = iter_obj.masks
+            masks = iter_obj.mask
             tags_t = iter_obj.pos
 
             sents_t, _ = self.transform(sents_t, masks)
@@ -511,7 +505,7 @@ class MarkovFlow(nn.Module):
 
 
             for index_s, tag_s, mask_s in zip(index, tags_t.transpose(0, 1), masks.transpose(0, 1)):
-                for i in range(mask_s.sum().item()):
+                for i in range(int(mask_s.sum().item())):
                     if index_s[i].item() == tag_s[i].item():
                         correct += 1
                     total += 1
@@ -571,7 +565,7 @@ class MarkovFlow(nn.Module):
 
             index_all += list(index)
 
-            tags = [tags_t[:masks[:,i].sum().item(), i] for i in range(index.size(0))]
+            tags = [tags_t[:int(masks[:,i].sum().item()), i] for i in range(index.size(0))]
             eval_tags += tags
 
             # count

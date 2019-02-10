@@ -106,7 +106,7 @@ def main(args):
     val_data = ConlluData(args.val_file, word_vec_dict,
         device=device, pos_to_id_dict=pos_to_id)
     test_data = ConlluData(args.test_file, word_vec_dict,
-        device=device, pos_to_id_dict=pos_to_id) 
+        device=device, pos_to_id_dict=pos_to_id)
 
 
     num_dims = len(train_data.embed[0][0])
