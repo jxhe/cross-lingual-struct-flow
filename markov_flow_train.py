@@ -98,42 +98,35 @@ def main(args):
     word_vec_dict.apply_transform(args.align_file)
     print('complete loading word vectors')
 
-    train_text, train_tags = read_conll(args.train_file)
-    val_text, val_tags = read_conll(args.val_file)
-    test_text, test_tags = read_conll(args.test_file)
+    pos_to_id = read_tag_map("tag_map.txt")
+    device = torch.device("cuda" if args.cuda else "cpu")
+    args.device = device
+    train_data = ConlluData(args.train_file, word_vec_dict,
+        device=device, pos_to_id_dict=pos_to_id)
+    val_data = ConlluData(args.val_file, word_vec_dict,
+        device=device, pos_to_id_dict=pos_to_id)
+    test_data = ConlluData(args.test_file, word_vec_dict,
+        device=device, pos_to_id_dict=pos_to_id) 
 
-    train_vec = sents_to_vec(word_vec_dict, train_text)
-    val_vec = sents_to_vec(word_vec_dict, val_text)
-    test_vec = sents_to_vec(word_vec_dict, test_text)
 
-    tag_dict = read_tag_map("tag_map.txt")
-
-    train_tag_ids, _ = sents_to_tagid(train_tags, tag_dict)
-    val_tag_ids, _ = sents_to_tagid(val_tags, tag_dict)
-    test_tag_ids, _ = sents_to_tagid(test_tags, tag_dict)
-
-    num_dims = len(train_vec[0][0])
+    num_dims = len(train_data.embed[0][0])
     print('complete reading data')
 
     print("embedding dims {}".format(num_dims))
-    print("#tags {}".format(len(tag_dict)))
-    print("#train sentences: {}".format(len(train_vec)))
-    print("#dev sentences: {}".format(len(val_vec)))
-    print("#test sentences: {}".format(len(test_vec)))
+    print("#tags {}".format(len(pos_to_id)))
+    print("#train sentences: {}".format(train_data.length))
+    print("#dev sentences: {}".format(val_data.length))
+    print("#test sentences: {}".format(test_data.length))
 
-    args.num_state = len(tag_dict)
+    args.num_state = len(pos_to_id)
 
-    log_niter = (len(train_vec)//args.batch_size)//10
-
-    pad = np.zeros(num_dims)
-    device = torch.device("cuda" if args.cuda else "cpu")
-    args.device = device
-    seed_vec, seed_tags = generate_seed(train_vec, train_tag_ids, args.batch_size)
-    init_seed = to_input_tensor(seed_vec, seed_tags, pad, device=device)
+    log_niter = (train_data.length//args.batch_size)//10
 
     model = MarkovFlow(args, num_dims).to(device)
 
-    model.init_params(init_seed)
+    with torch.no_grad():
+        model.init_params(train_data)
+    print("complete init")
 
     # if args.tag_from != '':
     #     model.eval()
@@ -150,8 +143,8 @@ def main(args):
     if args.mode == "eval":
         model.eval()
         with torch.no_grad():
-            acc = model.test_supervised(test_vec, test_tag_ids)
-            m1, vm, oneone = model.test_unsupervised(test_vec, test_tag_ids)
+            acc = model.test_supervised(test_data)
+            m1, vm, oneone = model.test_unsupervised(test_data)
         print("accuracy {}".format(acc))
         print("M1 {}, VM {}, one-to-one {}".format(m1, vm, oneone))
         return
@@ -173,8 +166,8 @@ def main(args):
     # print the accuracy under init params
     model.eval()
     with torch.no_grad():
-        acc = model.test_supervised(test_vec, test_tag_ids)
-        m1, vm, oneone = model.test_unsupervised(test_vec, test_tag_ids)
+        acc = model.test_supervised(test_data)
+        m1, vm, oneone = model.test_unsupervised(test_data)
         print("\nTEST: M1 {}, VM {}, one-to-one {}".format(m1, vm, oneone))
     print("\n*****starting acc {}, max_var {:.4f}, min_var {:.4f}*****\n".format(
           acc, model.var.max().item(), model.var.min().item()))
@@ -184,17 +177,17 @@ def main(args):
     for epoch in range(args.epochs):
         # model.print_params()
         report_obj = report_jc = report_ll = report_num_words = 0
-        for sents, tags in data_iter(list(zip(train_vec, train_tag_ids)), batch_size=args.batch_size,
-                               label=True, shuffle=True):
+        for iter_obj in train_data.data_iter(batch_size=args.batch_size,
+                                                shuffle=True):
 
             if args.aggressive:
                 inner_iter = 0
-                for sents_tmp, tags_tmp in data_iter(list(zip(train_vec, train_tag_ids)), batch_size=args.batch_size,
-                                                     label=True, shuffle=True):
+                for iter_obj_tmp in train_data.data_iter(batch_size=args.batch_size,
+                                                                shuffle=True):
                     proj_optimizer.zero_grad()
                     prior_optimizer.zero_grad()
-                    batch_size = len(sents_tmp)
-                    sents_t, tags_t, masks = to_input_tensor(sents_tmp, tags_tmp, pad, device=args.device)
+                    batch_size = iter_obj_tmp.pos.size(1)
+                    sents_t, tags_t, masks = iter_obj_tmp.embed, iter_obj_tmp.pos, iter_obj_tmp.mask
                     nll, jacobian_loss = model.unsupervised_loss(sents_t, masks)
                     avg_ll_loss = (nll + jacobian_loss)/batch_size
 
@@ -215,9 +208,9 @@ def main(args):
             #     raise ValueError
 
             train_iter += 1
-            batch_size = len(sents)
-            num_words = sum(len(sent) for sent in sents)
-            sents_t, tags_t, masks = to_input_tensor(sents, tags, pad, device=args.device)
+            batch_size = iter_obj.pos.size(1)
+            num_words = iter_obj.mask.sum().item()
+            sents_t, tags_t, masks = iter_obj.embed, iter_obj.pos, iter_obj.mask
             # optimizer.zero_grad()
             prior_optimizer.zero_grad()
             proj_optimizer.zero_grad()
@@ -279,7 +272,7 @@ def main(args):
         model.eval()
         if args.mode == "supervised":
             with torch.no_grad():
-                acc = model.test_supervised(val_vec, val_tag_ids)
+                acc = model.test_supervised(val_data)
                 print('\nDEV: *****epoch {}, iter {}, acc {}*****\n'.format(
                     epoch, train_iter, acc))
 
@@ -308,8 +301,8 @@ def main(args):
             torch.save(model.state_dict(), args.save_path)
 
         with torch.no_grad():
-            acc = model.test_supervised(test_vec, test_tag_ids)
-            m1, vm, oneone = model.test_unsupervised(test_vec, test_tag_ids)
+            acc = model.test_supervised(test_data)
+            m1, vm, oneone = model.test_unsupervised(test_data)
         print('\nTEST: *****epoch {}, iter {}, acc {}*****\n'.format(
             epoch, train_iter, acc))
         print("\nTEST: M1 {}, VM {}, one-to-one {}".format(m1, vm, oneone))
@@ -319,8 +312,8 @@ def main(args):
     model.eval()
     model.load_state_dict(torch.load(args.save_path))
     with torch.no_grad():
-        acc = model.test_supervised(test_vec, test_tag_ids)
-        m1, vm, oneone = model.test_unsupervised(test_vec, test_tag_ids)
+        acc = model.test_supervised(test_data)
+        m1, vm, oneone = model.test_unsupervised(test_data)
         print('\nTEST: *****epoch {}, iter {}, acc {}*****\n'.format(
             epoch, train_iter, acc))
         print("\nTEST: M1 {}, VM {}, one-to-one {}".format(m1, vm, oneone))
