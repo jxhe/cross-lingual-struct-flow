@@ -28,7 +28,7 @@ class MarkovFlow(nn.Module):
         self.device = args.device
 
         # Gaussian Variance
-        self.var = Parameter(torch.zeros((args.num_state, num_dims), dtype=torch.float32))
+        self.var = Parameter(torch.zeros(num_dims), dtype=torch.float32)
 
         if not args.train_var:
             self.var.requires_grad = False
@@ -143,7 +143,7 @@ class MarkovFlow(nn.Module):
 
         self.init_mean(train_data)
         self.var.fill_(0.1)
-        # self.init_var(train_data)
+        self.init_var(train_data)
 
         if self.args.init_var_one:
             self.var.fill_(1.0)
@@ -174,36 +174,36 @@ class MarkovFlow(nn.Module):
             self.means[tagid] = emb_dict[tagid] / cnt_dict[tagid]
 
     def init_var(self, train_data):
-        emb_dict = {}
-        cnt_dict = Counter()
-        for iter_obj in train_data.data_iter(self.args.batch_size):
-            sents_t = iter_obj.embed
+        cnt = 0
+        mean_sum = 0.
+        var_sum = 0.
+        for iter_obj in train_data.data_iter(batch_size=self.args.batch_size):
+            sents, masks = iter_obj.embed, iter_obj.mask
+            sents, _ = self.transform(sents, masks)
+            seq_length, _, features = sents.size()
+            flat_sents = sents.view(-1, features)
+            mean_sum = mean_sum + torch.sum(masks.view(-1, 1).expand_as(flat_sents) * 
+                flat_sents, dim=0)
+            cnt += masks.sum().item()
 
-            sents_t, _ = self.transform(sents_t, iter_obj.mask)
-            sents_t = sents_t.transpose(0, 1)
-            pos_t = iter_obj.pos.transpose(0, 1)
-            mask_t = iter_obj.mask.transpose(0, 1)
+        mean = mean_sum / cnt
 
-            for emb_s, tagid_s, mask_s in zip(sents_t, pos_t, mask_t):
-                for tagid, emb, mask in zip(tagid_s, emb_s, mask_s):
-                    tagid = tagid.item()
-                    mask = mask.item()
-                    if tagid in emb_dict:
-                        emb_dict[tagid] = emb_dict[tagid] + (emb - self.means[tagid]) ** 2 * mask
-                    else:
-                        emb_dict[tagid] = (emb - self.means[tagid]) ** 2 * mask
-
-                    cnt_dict[tagid] += mask
-
-        for tagid in emb_dict:
-            self.var[tagid] = emb_dict[tagid] / cnt_dict[tagid]
+        for iter_obj in train_data.data_iter(batch_size=self.args.batch_size):
+            sents, masks = iter_obj.embed, iter_obj.mask
+            sents, _ = self.transform(sents, masks)
+            seq_length, _, features = sents.size()
+            flat_sents = sents.view(-1, features)
+            var_sum = var_sum + torch.sum(masks.view(-1, 1).expand_as(flat_sents) *
+                                 ((flat_sents - mean.expand_as(flat_sents)) ** 2), dim = 0)
+        var = var_sum / cnt
+        self.var.copy_(var)
 
     def _calc_log_density_c(self):
         # return -self.num_dims/2.0 * (math.log(2) + \
         #         math.log(np.pi)) - 0.5 * self.num_dims * (torch.log(self.var))
 
         return -self.num_dims/2.0 * (math.log(2) + \
-                math.log(np.pi)) - 0.5 * torch.sum(torch.log(self.var), dim=-1)
+                math.log(np.pi)) - 0.5 * torch.sum(torch.log(self.var))
 
     def transform(self, x, masks=None):
         """
@@ -294,15 +294,9 @@ class MarkovFlow(nn.Module):
 
         # (sent_len, batch_size, num_dims)
         means = torch.gather(means, dim=2, index=tag_id).squeeze(2)
-        var = self.var.view(1, 1, self.num_state, self.num_dims)
-        var = var.expand(sent_len, batch_size,
-            self.num_state, self.num_dims)
-        var = torch.gather(var, dim=2, index=tag_id).squeeze(2)
 
-        # (sent_len, batch_size)
-        log_density_c = log_density_c.view(1, 1, self.num_state)
-        log_density_c = log_density_c.expand(sent_len, batch_size, self.num_state)
-        log_density_c = torch.gather(log_density_c, dim=2, index=tags.unsqueeze(2)).squeeze(2)
+        var = self.var.view(1, 1, self.num_dims)
+
 
         # (sent_len, batch_size)
         log_emission_prob = log_density_c - \
@@ -407,7 +401,7 @@ class MarkovFlow(nn.Module):
         means = self.means.expand(ep_size)
         var = self.var.expand(ep_size)
 
-        return self.log_density_c.unsqueeze(0) - \
+        return self.log_density_c - \
                0.5 * torch.sum((means-words) ** 2 / var, dim=2)
 
     def _calc_logA(self):
