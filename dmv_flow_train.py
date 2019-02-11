@@ -302,6 +302,7 @@ def main(args):
                 avg_ll_loss.backward()
 
                 torch.nn.utils.clip_grad_norm_(model.proj_group, 5.0)
+                # torch.nn.utils.clip_grad_norm_(model.prior_group, 5.0)
                 # torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
                 proj_optimizer.step()
 

@@ -28,7 +28,7 @@ class MarkovFlow(nn.Module):
         self.device = args.device
 
         # Gaussian Variance
-        self.var = Parameter(torch.zeros(num_dims), dtype=torch.float32)
+        self.var = Parameter(torch.zeros(num_dims, dtype=torch.float32))
 
         if not args.train_var:
             self.var.requires_grad = False
@@ -182,7 +182,7 @@ class MarkovFlow(nn.Module):
             sents, _ = self.transform(sents, masks)
             seq_length, _, features = sents.size()
             flat_sents = sents.view(-1, features)
-            mean_sum = mean_sum + torch.sum(masks.view(-1, 1).expand_as(flat_sents) * 
+            mean_sum = mean_sum + torch.sum(masks.view(-1, 1).expand_as(flat_sents) *
                 flat_sents, dim=0)
             cnt += masks.sum().item()
 
@@ -221,14 +221,15 @@ class MarkovFlow(nn.Module):
 
     def MLE_loss(self):
         # diff1 = ((self.means - self.means_init) ** 2).sum()
-        diff2 = ((self.tparams - self.tparams_init) ** 2).sum()
+        diff_prior = ((self.tparams - self.tparams_init) ** 2).sum()
 
         # diff = diff1 + diff2
+        diff_proj = 0.
 
-        # for i, param in enumerate(self.proj_layer.parameters()):
-        #     diff = diff + ((self.proj_init[i] - param) ** 2).sum()
+        for i, param in enumerate(self.proj_layer.parameters()):
+            diff_proj = diff_proj + ((self.proj_init[i] - param) ** 2).sum()
 
-        return 0.5 * self.args.beta * diff2
+        return 0.5 * (self.args.beta_prior * diff_prior + self.args.beta_proj * diff_proj)
 
     def unsupervised_loss(self, sents, masks):
         """

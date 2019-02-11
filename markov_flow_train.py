@@ -40,7 +40,8 @@ def init_config():
             help="if make variance variable trainable")
     parser.add_argument('--init_var_one', action='store_true', default=False)
     parser.add_argument('--aggressive', action='store_true', default=False)
-    parser.add_argument('--beta', type=float, default=0., help="regularize params")
+    parser.add_argument('--beta_prior', type=float, default=0., help="regularize params")
+    parser.add_argument('--beta_proj', type=float, default=0., help="regularize params")
 
     # pretrained model options
     parser.add_argument('--load_nice', default='', type=str,
@@ -224,7 +225,7 @@ def main(args):
 
             avg_ll_loss = (nll + jacobian_loss)/batch_size
 
-            if args.beta > 0:
+            if args.beta_prior > 0 or args.beta_proj > 0:
                 avg_ll_loss = avg_ll_loss + model.MLE_loss()
                 # avg_ll_loss = model.MLE_loss()
 
@@ -235,7 +236,7 @@ def main(args):
                 torch.nn.utils.clip_grad_norm_(model.proj_layer.parameters(), 5.0)
             else:
                 torch.nn.utils.clip_grad_norm_(model.proj_group, 5.0)
-            # torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
+                # torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
 
             # optimizer.step()
             prior_optimizer.step()

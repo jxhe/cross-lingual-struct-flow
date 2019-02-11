@@ -183,8 +183,10 @@ class ConlluData(object):
             mem = 0
             next_ = curr
             mem = 0
+            cnt = 0
             while next_ < len(sort_len):
-                mem += sort_len[next_]
+                cnt += 1
+                mem = cnt * sort_len[next_]
                 if mem > mem_limit:
                     break
                 next_ += 1
