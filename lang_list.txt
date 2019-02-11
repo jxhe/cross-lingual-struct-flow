@@ -28,4 +28,3 @@ Slovenian sl SSJSST
 Spanish es GSDAnCora
 Swedish sv Talbanken
 Ukrainian uk IU
-

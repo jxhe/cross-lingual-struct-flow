@@ -1,10 +1,9 @@
-
 params_markov={
     "couple_layers": 8,
     "cell_layers": 1,
     "lstm_layers": 2,
     "valid_nepoch": 1,
-    "epochs": 50,
+    "epochs": 5,
     "batch_size": 32,
     "emb_dir": "fastText_data",
     "train_file": "ud-treebanks-v2.2/UD_Chinese-GSD/zh_gsd-ud-train.conllu",
@@ -19,7 +18,7 @@ params_dmv={
     "cell_layers": 1,
     "valid_nepoch": 1,
     "lstm_layers": 2,
-    "epochs": 50,
+    "epochs": 5,
     "batch_size": 16,
     "emb_dir": "fastText_data",
     "train_file": "ud-treebanks-v2.2/UD_Chinese-GSD/zh_gsd-ud-train.conllu",
