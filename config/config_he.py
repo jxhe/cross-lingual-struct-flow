@@ -9,7 +9,7 @@ params_markov={
     "train_file": "ud-treebanks-v2.2/UD_Hebrew-HTB/he_htb-ud-train.conllu",
     "val_file": "ud-treebanks-v2.2/UD_Hebrew-HTB/he_htb-ud-dev.conllu",
     "test_file": "ud-treebanks-v2.2/UD_Hebrew-HTB/he_htb-ud-test.conllu",
-    "vec_file": "fastText_data/wiki.he.htb.vec",
+    "vec_file": "fastText_data/wiki.he.htb.vec.new",
     "align_file": "multilingual_trans/alignment_matrices/he.txt"
 }
 
@@ -24,6 +24,6 @@ params_dmv={
     "train_file": "ud-treebanks-v2.2/UD_Hebrew-HTB/he_htb-ud-train.conllu",
     "val_file": "ud-treebanks-v2.2/UD_Hebrew-HTB/he_htb-ud-dev.conllu",
     "test_file": "ud-treebanks-v2.2/UD_Hebrew-HTB/he_htb-ud-test.conllu",
-    "vec_file": "fastText_data/wiki.he.htb.vec",
+    "vec_file": "fastText_data/wiki.he.htb.vec.new",
     "align_file": "multilingual_trans/alignment_matrices/he.txt"
 }

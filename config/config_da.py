@@ -9,7 +9,7 @@ params_markov={
     "train_file": "ud-treebanks-v2.2/UD_Danish-DDT/da_ddt-ud-train.conllu",
     "val_file": "ud-treebanks-v2.2/UD_Danish-DDT/da_ddt-ud-dev.conllu",
     "test_file": "ud-treebanks-v2.2/UD_Danish-DDT/da_ddt-ud-test.conllu",
-    "vec_file": "fastText_data/wiki.da.ddt.vec",
+    "vec_file": "fastText_data/wiki.da.ddt.vec.new",
     "align_file": "multilingual_trans/alignment_matrices/da.txt"
 }
 
@@ -24,6 +24,6 @@ params_dmv={
     "train_file": "ud-treebanks-v2.2/UD_Danish-DDT/da_ddt-ud-train.conllu",
     "val_file": "ud-treebanks-v2.2/UD_Danish-DDT/da_ddt-ud-dev.conllu",
     "test_file": "ud-treebanks-v2.2/UD_Danish-DDT/da_ddt-ud-test.conllu",
-    "vec_file": "fastText_data/wiki.da.ddt.vec",
+    "vec_file": "fastText_data/wiki.da.ddt.vec.new",
     "align_file": "multilingual_trans/alignment_matrices/da.txt"
 }

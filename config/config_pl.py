@@ -9,7 +9,7 @@ params_markov={
     "train_file": "ud-treebanks-v2.2/UD_Polish-LFGSZ/pl_lfgsz-ud-train.conllu",
     "val_file": "ud-treebanks-v2.2/UD_Polish-LFGSZ/pl_lfgsz-ud-dev.conllu",
     "test_file": "ud-treebanks-v2.2/UD_Polish-LFGSZ/pl_lfgsz-ud-test.conllu",
-    "vec_file": "fastText_data/wiki.pl.lfgsz.vec",
+    "vec_file": "fastText_data/wiki.pl.lfgsz.vec.new",
     "align_file": "multilingual_trans/alignment_matrices/pl.txt"
 }
 
@@ -24,6 +24,6 @@ params_dmv={
     "train_file": "ud-treebanks-v2.2/UD_Polish-LFGSZ/pl_lfgsz-ud-train.conllu",
     "val_file": "ud-treebanks-v2.2/UD_Polish-LFGSZ/pl_lfgsz-ud-dev.conllu",
     "test_file": "ud-treebanks-v2.2/UD_Polish-LFGSZ/pl_lfgsz-ud-test.conllu",
-    "vec_file": "fastText_data/wiki.pl.lfgsz.vec",
+    "vec_file": "fastText_data/wiki.pl.lfgsz.vec.new",
     "align_file": "multilingual_trans/alignment_matrices/pl.txt"
 }

@@ -9,7 +9,7 @@ params_markov={
     "train_file": "ud-treebanks-v2.2/UD_Romanian-RRT/ro_rrt-ud-train.conllu",
     "val_file": "ud-treebanks-v2.2/UD_Romanian-RRT/ro_rrt-ud-dev.conllu",
     "test_file": "ud-treebanks-v2.2/UD_Romanian-RRT/ro_rrt-ud-test.conllu",
-    "vec_file": "fastText_data/wiki.ro.rrt.vec",
+    "vec_file": "fastText_data/wiki.ro.rrt.vec.new",
     "align_file": "multilingual_trans/alignment_matrices/ro.txt"
 }
 
@@ -24,6 +24,6 @@ params_dmv={
     "train_file": "ud-treebanks-v2.2/UD_Romanian-RRT/ro_rrt-ud-train.conllu",
     "val_file": "ud-treebanks-v2.2/UD_Romanian-RRT/ro_rrt-ud-dev.conllu",
     "test_file": "ud-treebanks-v2.2/UD_Romanian-RRT/ro_rrt-ud-test.conllu",
-    "vec_file": "fastText_data/wiki.ro.rrt.vec",
+    "vec_file": "fastText_data/wiki.ro.rrt.vec.new",
     "align_file": "multilingual_trans/alignment_matrices/ro.txt"
 }

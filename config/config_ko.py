@@ -9,7 +9,7 @@ params_markov={
     "train_file": "ud-treebanks-v2.2/UD_Korean-GSDKaist/ko_gsdkaist-ud-train.conllu",
     "val_file": "ud-treebanks-v2.2/UD_Korean-GSDKaist/ko_gsdkaist-ud-dev.conllu",
     "test_file": "ud-treebanks-v2.2/UD_Korean-GSDKaist/ko_gsdkaist-ud-test.conllu",
-    "vec_file": "fastText_data/wiki.ko.gsdkaist.vec",
+    "vec_file": "fastText_data/wiki.ko.gsdkaist.vec.new",
     "align_file": "multilingual_trans/alignment_matrices/ko.txt"
 }
 
@@ -24,6 +24,6 @@ params_dmv={
     "train_file": "ud-treebanks-v2.2/UD_Korean-GSDKaist/ko_gsdkaist-ud-train.conllu",
     "val_file": "ud-treebanks-v2.2/UD_Korean-GSDKaist/ko_gsdkaist-ud-dev.conllu",
     "test_file": "ud-treebanks-v2.2/UD_Korean-GSDKaist/ko_gsdkaist-ud-test.conllu",
-    "vec_file": "fastText_data/wiki.ko.gsdkaist.vec",
+    "vec_file": "fastText_data/wiki.ko.gsdkaist.vec.new",
     "align_file": "multilingual_trans/alignment_matrices/ko.txt"
 }

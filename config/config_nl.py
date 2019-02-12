@@ -9,7 +9,7 @@ params_markov={
     "train_file": "ud-treebanks-v2.2/UD_Dutch-AlpinoLassySmall/nl_alpinolassysmall-ud-train.conllu",
     "val_file": "ud-treebanks-v2.2/UD_Dutch-AlpinoLassySmall/nl_alpinolassysmall-ud-dev.conllu",
     "test_file": "ud-treebanks-v2.2/UD_Dutch-AlpinoLassySmall/nl_alpinolassysmall-ud-test.conllu",
-    "vec_file": "fastText_data/wiki.nl.alpinolassysmall.vec",
+    "vec_file": "fastText_data/wiki.nl.alpinolassysmall.vec.new",
     "align_file": "multilingual_trans/alignment_matrices/nl.txt"
 }
 
@@ -24,6 +24,6 @@ params_dmv={
     "train_file": "ud-treebanks-v2.2/UD_Dutch-AlpinoLassySmall/nl_alpinolassysmall-ud-train.conllu",
     "val_file": "ud-treebanks-v2.2/UD_Dutch-AlpinoLassySmall/nl_alpinolassysmall-ud-dev.conllu",
     "test_file": "ud-treebanks-v2.2/UD_Dutch-AlpinoLassySmall/nl_alpinolassysmall-ud-test.conllu",
-    "vec_file": "fastText_data/wiki.nl.alpinolassysmall.vec",
+    "vec_file": "fastText_data/wiki.nl.alpinolassysmall.vec.new",
     "align_file": "multilingual_trans/alignment_matrices/nl.txt"
 }

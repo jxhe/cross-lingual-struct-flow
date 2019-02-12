@@ -9,7 +9,7 @@ params_markov={
     "train_file": "ud-treebanks-v2.2/UD_Ukrainian-IU/uk_iu-ud-train.conllu",
     "val_file": "ud-treebanks-v2.2/UD_Ukrainian-IU/uk_iu-ud-dev.conllu",
     "test_file": "ud-treebanks-v2.2/UD_Ukrainian-IU/uk_iu-ud-test.conllu",
-    "vec_file": "fastText_data/wiki.uk.iu.vec",
+    "vec_file": "fastText_data/wiki.uk.iu.vec.new",
     "align_file": "multilingual_trans/alignment_matrices/uk.txt"
 }
 
@@ -24,6 +24,6 @@ params_dmv={
     "train_file": "ud-treebanks-v2.2/UD_Ukrainian-IU/uk_iu-ud-train.conllu",
     "val_file": "ud-treebanks-v2.2/UD_Ukrainian-IU/uk_iu-ud-dev.conllu",
     "test_file": "ud-treebanks-v2.2/UD_Ukrainian-IU/uk_iu-ud-test.conllu",
-    "vec_file": "fastText_data/wiki.uk.iu.vec",
+    "vec_file": "fastText_data/wiki.uk.iu.vec.new",
     "align_file": "multilingual_trans/alignment_matrices/uk.txt"
 }

@@ -9,7 +9,7 @@ params_markov={
     "train_file": "ud-treebanks-v2.2/UD_Swedish-Talbanken/sv_talbanken-ud-train.conllu",
     "val_file": "ud-treebanks-v2.2/UD_Swedish-Talbanken/sv_talbanken-ud-dev.conllu",
     "test_file": "ud-treebanks-v2.2/UD_Swedish-Talbanken/sv_talbanken-ud-test.conllu",
-    "vec_file": "fastText_data/wiki.sv.talbanken.vec",
+    "vec_file": "fastText_data/wiki.sv.talbanken.vec.new",
     "align_file": "multilingual_trans/alignment_matrices/sv.txt"
 }
 
@@ -24,6 +24,6 @@ params_dmv={
     "train_file": "ud-treebanks-v2.2/UD_Swedish-Talbanken/sv_talbanken-ud-train.conllu",
     "val_file": "ud-treebanks-v2.2/UD_Swedish-Talbanken/sv_talbanken-ud-dev.conllu",
     "test_file": "ud-treebanks-v2.2/UD_Swedish-Talbanken/sv_talbanken-ud-test.conllu",
-    "vec_file": "fastText_data/wiki.sv.talbanken.vec",
+    "vec_file": "fastText_data/wiki.sv.talbanken.vec.new",
     "align_file": "multilingual_trans/alignment_matrices/sv.txt"
 }

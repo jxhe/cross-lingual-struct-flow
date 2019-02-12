@@ -9,7 +9,7 @@ params_markov={
     "train_file": "ud-treebanks-v2.2/UD_Latvian-LVTB/lv_lvtb-ud-train.conllu",
     "val_file": "ud-treebanks-v2.2/UD_Latvian-LVTB/lv_lvtb-ud-dev.conllu",
     "test_file": "ud-treebanks-v2.2/UD_Latvian-LVTB/lv_lvtb-ud-test.conllu",
-    "vec_file": "fastText_data/wiki.lv.lvtb.vec",
+    "vec_file": "fastText_data/wiki.lv.lvtb.vec.new",
     "align_file": "multilingual_trans/alignment_matrices/lv.txt"
 }
 
@@ -24,6 +24,6 @@ params_dmv={
     "train_file": "ud-treebanks-v2.2/UD_Latvian-LVTB/lv_lvtb-ud-train.conllu",
     "val_file": "ud-treebanks-v2.2/UD_Latvian-LVTB/lv_lvtb-ud-dev.conllu",
     "test_file": "ud-treebanks-v2.2/UD_Latvian-LVTB/lv_lvtb-ud-test.conllu",
-    "vec_file": "fastText_data/wiki.lv.lvtb.vec",
+    "vec_file": "fastText_data/wiki.lv.lvtb.vec.new",
     "align_file": "multilingual_trans/alignment_matrices/lv.txt"
 }

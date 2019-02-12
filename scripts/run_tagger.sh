@@ -7,8 +7,8 @@
 #
 
 
-python -u markov_flow_train.py \
-        --lang $1 \
+CUDA_VISIBLE_DEVICES=$1 python -u markov_flow_train.py \
+        --lang $2 \
         --model nice \
         --mode unsupervised \
         --set_seed \
@@ -18,4 +18,4 @@ python -u markov_flow_train.py \
         --beta_prior 0.1 \
         --prior_lr 0.01 \
         --proj_lr 0.001 \
-        --taskid $2 \
+        --taskid $3 > $4

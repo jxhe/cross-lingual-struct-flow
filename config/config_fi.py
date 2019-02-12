@@ -9,7 +9,7 @@ params_markov={
     "train_file": "ud-treebanks-v2.2/UD_Finnish-TDT/fi_tdt-ud-train.conllu",
     "val_file": "ud-treebanks-v2.2/UD_Finnish-TDT/fi_tdt-ud-dev.conllu",
     "test_file": "ud-treebanks-v2.2/UD_Finnish-TDT/fi_tdt-ud-test.conllu",
-    "vec_file": "fastText_data/wiki.fi.tdt.vec",
+    "vec_file": "fastText_data/wiki.fi.tdt.vec.new",
     "align_file": "multilingual_trans/alignment_matrices/fi.txt"
 }
 
@@ -24,6 +24,6 @@ params_dmv={
     "train_file": "ud-treebanks-v2.2/UD_Finnish-TDT/fi_tdt-ud-train.conllu",
     "val_file": "ud-treebanks-v2.2/UD_Finnish-TDT/fi_tdt-ud-dev.conllu",
     "test_file": "ud-treebanks-v2.2/UD_Finnish-TDT/fi_tdt-ud-test.conllu",
-    "vec_file": "fastText_data/wiki.fi.tdt.vec",
+    "vec_file": "fastText_data/wiki.fi.tdt.vec.new",
     "align_file": "multilingual_trans/alignment_matrices/fi.txt"
 }

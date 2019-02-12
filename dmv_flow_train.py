@@ -178,7 +178,7 @@ def main(args):
 
     best_acc = 0.
     if args.mode == "unsupervised":
-        nrep = 1
+        nrep = 100
     else:
         nrep = 3
 

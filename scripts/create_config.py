@@ -1,4 +1,4 @@
-# This script reads "lang_list.txt" and create all 
+# This script reads "lang_list.txt" and create all
 # config files in config folder
 
 import os
@@ -53,7 +53,7 @@ for line in fin:
     if not os.path.exists(dev_file):
         dev_file = test_file
 
-    vec_file = "fastText_data/wiki.{}.{}.vec".format(abbr, treebank_s)
+    vec_file = "fastText_data/wiki.{}.{}.vec.new".format(abbr, treebank_s)
     align_file = "multilingual_trans/alignment_matrices/{}.txt".format(abbr)
     params_markov["train_file"] = params_dmv["train_file"] = train_file
     params_markov["val_file"] = params_dmv["val_file"] = dev_file
@@ -65,4 +65,4 @@ for line in fin:
         fout.write("params_markov="+json.dumps(params_markov, indent=4))
         fout.write("\n\n")
         fout.write("params_dmv="+json.dumps(params_dmv, indent=4))
-        
+

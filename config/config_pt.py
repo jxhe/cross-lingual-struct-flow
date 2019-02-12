@@ -9,7 +9,7 @@ params_markov={
     "train_file": "ud-treebanks-v2.2/UD_Portuguese-BosqueGSD/pt_bosquegsd-ud-train.conllu",
     "val_file": "ud-treebanks-v2.2/UD_Portuguese-BosqueGSD/pt_bosquegsd-ud-dev.conllu",
     "test_file": "ud-treebanks-v2.2/UD_Portuguese-BosqueGSD/pt_bosquegsd-ud-test.conllu",
-    "vec_file": "fastText_data/wiki.pt.bosquegsd.vec",
+    "vec_file": "fastText_data/wiki.pt.bosquegsd.vec.new",
     "align_file": "multilingual_trans/alignment_matrices/pt.txt"
 }
 
@@ -24,6 +24,6 @@ params_dmv={
     "train_file": "ud-treebanks-v2.2/UD_Portuguese-BosqueGSD/pt_bosquegsd-ud-train.conllu",
     "val_file": "ud-treebanks-v2.2/UD_Portuguese-BosqueGSD/pt_bosquegsd-ud-dev.conllu",
     "test_file": "ud-treebanks-v2.2/UD_Portuguese-BosqueGSD/pt_bosquegsd-ud-test.conllu",
-    "vec_file": "fastText_data/wiki.pt.bosquegsd.vec",
+    "vec_file": "fastText_data/wiki.pt.bosquegsd.vec.new",
     "align_file": "multilingual_trans/alignment_matrices/pt.txt"
 }

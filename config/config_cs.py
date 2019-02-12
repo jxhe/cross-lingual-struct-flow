@@ -9,7 +9,7 @@ params_markov={
     "train_file": "ud-treebanks-v2.2/UD_Czech-PDTCACCLTTFicTree/cs_pdtcacclttfictree-ud-train.conllu",
     "val_file": "ud-treebanks-v2.2/UD_Czech-PDTCACCLTTFicTree/cs_pdtcacclttfictree-ud-dev.conllu",
     "test_file": "ud-treebanks-v2.2/UD_Czech-PDTCACCLTTFicTree/cs_pdtcacclttfictree-ud-test.conllu",
-    "vec_file": "fastText_data/wiki.cs.pdtcacclttfictree.vec",
+    "vec_file": "fastText_data/wiki.cs.pdtcacclttfictree.vec.new",
     "align_file": "multilingual_trans/alignment_matrices/cs.txt"
 }
 
@@ -24,6 +24,6 @@ params_dmv={
     "train_file": "ud-treebanks-v2.2/UD_Czech-PDTCACCLTTFicTree/cs_pdtcacclttfictree-ud-train.conllu",
     "val_file": "ud-treebanks-v2.2/UD_Czech-PDTCACCLTTFicTree/cs_pdtcacclttfictree-ud-dev.conllu",
     "test_file": "ud-treebanks-v2.2/UD_Czech-PDTCACCLTTFicTree/cs_pdtcacclttfictree-ud-test.conllu",
-    "vec_file": "fastText_data/wiki.cs.pdtcacclttfictree.vec",
+    "vec_file": "fastText_data/wiki.cs.pdtcacclttfictree.vec.new",
     "align_file": "multilingual_trans/alignment_matrices/cs.txt"
 }

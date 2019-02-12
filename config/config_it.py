@@ -9,7 +9,7 @@ params_markov={
     "train_file": "ud-treebanks-v2.2/UD_Italian-ISDT/it_isdt-ud-train.conllu",
     "val_file": "ud-treebanks-v2.2/UD_Italian-ISDT/it_isdt-ud-dev.conllu",
     "test_file": "ud-treebanks-v2.2/UD_Italian-ISDT/it_isdt-ud-test.conllu",
-    "vec_file": "fastText_data/wiki.it.isdt.vec",
+    "vec_file": "fastText_data/wiki.it.isdt.vec.new",
     "align_file": "multilingual_trans/alignment_matrices/it.txt"
 }
 
@@ -24,6 +24,6 @@ params_dmv={
     "train_file": "ud-treebanks-v2.2/UD_Italian-ISDT/it_isdt-ud-train.conllu",
     "val_file": "ud-treebanks-v2.2/UD_Italian-ISDT/it_isdt-ud-dev.conllu",
     "test_file": "ud-treebanks-v2.2/UD_Italian-ISDT/it_isdt-ud-test.conllu",
-    "vec_file": "fastText_data/wiki.it.isdt.vec",
+    "vec_file": "fastText_data/wiki.it.isdt.vec.new",
     "align_file": "multilingual_trans/alignment_matrices/it.txt"
 }
