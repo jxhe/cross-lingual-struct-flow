@@ -17,4 +17,5 @@ python -u markov_flow_train.py \
         --beta_proj 100. \
         --beta_prior 0.1 \
         --prior_lr 0.01 \
-        --proj_lr 0.001
+        --proj_lr 0.001 \
+        --taskid $2 \

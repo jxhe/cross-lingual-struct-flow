@@ -19,5 +19,6 @@ python -u dmv_flow_train.py \
         --prior_lr 0.01 \
         --freeze_pos_emb \
         --load_nice ./dump_models/dmv/en_supervised_wopos_nice_0_20.pt \
-        --beta 0.1
+        --beta 0.1 \
+        --taskid $2 \
 
