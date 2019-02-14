@@ -9,7 +9,7 @@ params_markov={
     "train_file": "ud-treebanks-v2.2/UD_Japanese-GSD/ja_gsd-ud-train.conllu",
     "val_file": "ud-treebanks-v2.2/UD_Japanese-GSD/ja_gsd-ud-dev.conllu",
     "test_file": "ud-treebanks-v2.2/UD_Japanese-GSD/ja_gsd-ud-test.conllu",
-    "vec_file": "fastText_data/wiki.ja.gsd.vec",
+    "vec_file": "fastText_data/wiki.ja.gsd.vec.new",
     "align_file": "multilingual_trans/alignment_matrices/ja.txt"
 }
 
@@ -24,6 +24,6 @@ params_dmv={
     "train_file": "ud-treebanks-v2.2/UD_Japanese-GSD/ja_gsd-ud-train.conllu",
     "val_file": "ud-treebanks-v2.2/UD_Japanese-GSD/ja_gsd-ud-dev.conllu",
     "test_file": "ud-treebanks-v2.2/UD_Japanese-GSD/ja_gsd-ud-test.conllu",
-    "vec_file": "fastText_data/wiki.ja.gsd.vec",
+    "vec_file": "fastText_data/wiki.ja.gsd.vec.new",
     "align_file": "multilingual_trans/alignment_matrices/ja.txt"
 }

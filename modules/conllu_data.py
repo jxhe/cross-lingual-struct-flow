@@ -91,7 +91,7 @@ class ConlluData(object):
     def text_to_embed(self, embedding):
         self.embed = []
         for sent in self.text:
-            sample = [embedding[word] for word in sent]
+            sample = [embedding[word] if word in embedding else np.zeros(embedding.n_dim) for word in sent]
             self.embed.append(sample)
 
     def input_transpose(self, embed, pos, head, r_deps, l_deps):
@@ -167,7 +167,7 @@ class ConlluData(object):
 
             yield IterObj(embed_t, pos_t, head_t, r_deps_t, l_deps_t, masks_t)
 
-    def data_iter_efficient(self, mem_limit=300):
+    def data_iter_efficient(self, mem_limit=250):
         """This function batches similar-length sentences together,
         with a memory limit that satisfies batch_size x length <= mem_limit.
         Such batching is only used in test to accelarate evaluation

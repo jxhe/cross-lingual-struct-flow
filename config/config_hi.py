@@ -9,7 +9,7 @@ params_markov={
     "train_file": "ud-treebanks-v2.2/UD_Hindi-HDTB/hi_hdtb-ud-train.conllu",
     "val_file": "ud-treebanks-v2.2/UD_Hindi-HDTB/hi_hdtb-ud-dev.conllu",
     "test_file": "ud-treebanks-v2.2/UD_Hindi-HDTB/hi_hdtb-ud-test.conllu",
-    "vec_file": "fastText_data/wiki.hi.hdtb.vec",
+    "vec_file": "fastText_data/wiki.hi.hdtb.vec.new",
     "align_file": "multilingual_trans/alignment_matrices/hi.txt"
 }
 
@@ -24,6 +24,6 @@ params_dmv={
     "train_file": "ud-treebanks-v2.2/UD_Hindi-HDTB/hi_hdtb-ud-train.conllu",
     "val_file": "ud-treebanks-v2.2/UD_Hindi-HDTB/hi_hdtb-ud-dev.conllu",
     "test_file": "ud-treebanks-v2.2/UD_Hindi-HDTB/hi_hdtb-ud-test.conllu",
-    "vec_file": "fastText_data/wiki.hi.hdtb.vec",
+    "vec_file": "fastText_data/wiki.hi.hdtb.vec.new",
     "align_file": "multilingual_trans/alignment_matrices/hi.txt"
 }

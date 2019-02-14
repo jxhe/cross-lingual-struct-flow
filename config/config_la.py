@@ -9,7 +9,7 @@ params_markov={
     "train_file": "ud-treebanks-v2.2/UD_Latin-PROIEL/la_proiel-ud-train.conllu",
     "val_file": "ud-treebanks-v2.2/UD_Latin-PROIEL/la_proiel-ud-dev.conllu",
     "test_file": "ud-treebanks-v2.2/UD_Latin-PROIEL/la_proiel-ud-test.conllu",
-    "vec_file": "fastText_data/wiki.la.proiel.vec",
+    "vec_file": "fastText_data/wiki.la.proiel.vec.new",
     "align_file": "multilingual_trans/alignment_matrices/la.txt"
 }
 
@@ -24,6 +24,6 @@ params_dmv={
     "train_file": "ud-treebanks-v2.2/UD_Latin-PROIEL/la_proiel-ud-train.conllu",
     "val_file": "ud-treebanks-v2.2/UD_Latin-PROIEL/la_proiel-ud-dev.conllu",
     "test_file": "ud-treebanks-v2.2/UD_Latin-PROIEL/la_proiel-ud-test.conllu",
-    "vec_file": "fastText_data/wiki.la.proiel.vec",
+    "vec_file": "fastText_data/wiki.la.proiel.vec.new",
     "align_file": "multilingual_trans/alignment_matrices/la.txt"
 }

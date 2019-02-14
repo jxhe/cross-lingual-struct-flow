@@ -9,7 +9,7 @@ params_markov={
     "train_file": "ud-treebanks-v2.2/UD_Catalan-AnCora/ca_ancora-ud-train.conllu",
     "val_file": "ud-treebanks-v2.2/UD_Catalan-AnCora/ca_ancora-ud-dev.conllu",
     "test_file": "ud-treebanks-v2.2/UD_Catalan-AnCora/ca_ancora-ud-test.conllu",
-    "vec_file": "fastText_data/wiki.ca.ancora.vec",
+    "vec_file": "fastText_data/wiki.ca.ancora.vec.new",
     "align_file": "multilingual_trans/alignment_matrices/ca.txt"
 }
 
@@ -24,6 +24,6 @@ params_dmv={
     "train_file": "ud-treebanks-v2.2/UD_Catalan-AnCora/ca_ancora-ud-train.conllu",
     "val_file": "ud-treebanks-v2.2/UD_Catalan-AnCora/ca_ancora-ud-dev.conllu",
     "test_file": "ud-treebanks-v2.2/UD_Catalan-AnCora/ca_ancora-ud-test.conllu",
-    "vec_file": "fastText_data/wiki.ca.ancora.vec",
+    "vec_file": "fastText_data/wiki.ca.ancora.vec.new",
     "align_file": "multilingual_trans/alignment_matrices/ca.txt"
 }

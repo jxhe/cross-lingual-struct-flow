@@ -9,7 +9,7 @@ params_markov={
     "train_file": "ud-treebanks-v2.2/UD_Russian-SynTagRus/ru_syntagrus-ud-train.conllu",
     "val_file": "ud-treebanks-v2.2/UD_Russian-SynTagRus/ru_syntagrus-ud-dev.conllu",
     "test_file": "ud-treebanks-v2.2/UD_Russian-SynTagRus/ru_syntagrus-ud-test.conllu",
-    "vec_file": "fastText_data/wiki.ru.syntagrus.vec",
+    "vec_file": "fastText_data/wiki.ru.syntagrus.vec.new",
     "align_file": "multilingual_trans/alignment_matrices/ru.txt"
 }
 
@@ -24,6 +24,6 @@ params_dmv={
     "train_file": "ud-treebanks-v2.2/UD_Russian-SynTagRus/ru_syntagrus-ud-train.conllu",
     "val_file": "ud-treebanks-v2.2/UD_Russian-SynTagRus/ru_syntagrus-ud-dev.conllu",
     "test_file": "ud-treebanks-v2.2/UD_Russian-SynTagRus/ru_syntagrus-ud-test.conllu",
-    "vec_file": "fastText_data/wiki.ru.syntagrus.vec",
+    "vec_file": "fastText_data/wiki.ru.syntagrus.vec.new",
     "align_file": "multilingual_trans/alignment_matrices/ru.txt"
 }

@@ -64,9 +64,8 @@ out_file = "fastText_data/wiki.{}.{}.vec".format(args.lang, suffix)
 with open(out_file, "w", encoding="utf-8") as fout:
     fout.write("{} {}\n".format(len(vocab), ndim))
     for word in vocab:
-        fout.write("{} ".format(word))
-        for val in word_vec_model.get_word_vector(word):
-            fout.write("{} ".format(val))
-        fout.write('\n')
-
-fout.close()
+        if " " not in word:
+            fout.write("{} ".format(word))
+            for val in word_vec_model.get_word_vector(word):
+                fout.write("{} ".format(val))
+            fout.write('\n')

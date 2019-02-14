@@ -9,7 +9,7 @@ params_markov={
     "train_file": "ud-treebanks-v2.2/UD_Slovenian-SSJSST/sl_ssjsst-ud-train.conllu",
     "val_file": "ud-treebanks-v2.2/UD_Slovenian-SSJSST/sl_ssjsst-ud-dev.conllu",
     "test_file": "ud-treebanks-v2.2/UD_Slovenian-SSJSST/sl_ssjsst-ud-test.conllu",
-    "vec_file": "fastText_data/wiki.sl.ssjsst.vec",
+    "vec_file": "fastText_data/wiki.sl.ssjsst.vec.new",
     "align_file": "multilingual_trans/alignment_matrices/sl.txt"
 }
 
@@ -24,6 +24,6 @@ params_dmv={
     "train_file": "ud-treebanks-v2.2/UD_Slovenian-SSJSST/sl_ssjsst-ud-train.conllu",
     "val_file": "ud-treebanks-v2.2/UD_Slovenian-SSJSST/sl_ssjsst-ud-dev.conllu",
     "test_file": "ud-treebanks-v2.2/UD_Slovenian-SSJSST/sl_ssjsst-ud-test.conllu",
-    "vec_file": "fastText_data/wiki.sl.ssjsst.vec",
+    "vec_file": "fastText_data/wiki.sl.ssjsst.vec.new",
     "align_file": "multilingual_trans/alignment_matrices/sl.txt"
 }

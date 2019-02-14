@@ -9,7 +9,7 @@ params_markov={
     "train_file": "ud-treebanks-v2.2/UD_Estonian-EDT/et_edt-ud-train.conllu",
     "val_file": "ud-treebanks-v2.2/UD_Estonian-EDT/et_edt-ud-dev.conllu",
     "test_file": "ud-treebanks-v2.2/UD_Estonian-EDT/et_edt-ud-test.conllu",
-    "vec_file": "fastText_data/wiki.et.edt.vec",
+    "vec_file": "fastText_data/wiki.et.edt.vec.new",
     "align_file": "multilingual_trans/alignment_matrices/et.txt"
 }
 
@@ -24,6 +24,6 @@ params_dmv={
     "train_file": "ud-treebanks-v2.2/UD_Estonian-EDT/et_edt-ud-train.conllu",
     "val_file": "ud-treebanks-v2.2/UD_Estonian-EDT/et_edt-ud-dev.conllu",
     "test_file": "ud-treebanks-v2.2/UD_Estonian-EDT/et_edt-ud-test.conllu",
-    "vec_file": "fastText_data/wiki.et.edt.vec",
+    "vec_file": "fastText_data/wiki.et.edt.vec.new",
     "align_file": "multilingual_trans/alignment_matrices/et.txt"
 }

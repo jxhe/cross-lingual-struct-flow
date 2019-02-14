@@ -9,7 +9,7 @@ params_markov={
     "train_file": "ud-treebanks-v2.2/UD_Spanish-GSDAnCora/es_gsdancora-ud-train.conllu",
     "val_file": "ud-treebanks-v2.2/UD_Spanish-GSDAnCora/es_gsdancora-ud-dev.conllu",
     "test_file": "ud-treebanks-v2.2/UD_Spanish-GSDAnCora/es_gsdancora-ud-test.conllu",
-    "vec_file": "fastText_data/wiki.es.gsdancora.vec",
+    "vec_file": "fastText_data/wiki.es.gsdancora.vec.new",
     "align_file": "multilingual_trans/alignment_matrices/es.txt"
 }
 
@@ -24,6 +24,6 @@ params_dmv={
     "train_file": "ud-treebanks-v2.2/UD_Spanish-GSDAnCora/es_gsdancora-ud-train.conllu",
     "val_file": "ud-treebanks-v2.2/UD_Spanish-GSDAnCora/es_gsdancora-ud-dev.conllu",
     "test_file": "ud-treebanks-v2.2/UD_Spanish-GSDAnCora/es_gsdancora-ud-test.conllu",
-    "vec_file": "fastText_data/wiki.es.gsdancora.vec",
+    "vec_file": "fastText_data/wiki.es.gsdancora.vec.new",
     "align_file": "multilingual_trans/alignment_matrices/es.txt"
 }

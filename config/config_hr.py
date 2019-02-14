@@ -9,7 +9,7 @@ params_markov={
     "train_file": "ud-treebanks-v2.2/UD_Croatian-SET/hr_set-ud-train.conllu",
     "val_file": "ud-treebanks-v2.2/UD_Croatian-SET/hr_set-ud-dev.conllu",
     "test_file": "ud-treebanks-v2.2/UD_Croatian-SET/hr_set-ud-test.conllu",
-    "vec_file": "fastText_data/wiki.hr.set.vec",
+    "vec_file": "fastText_data/wiki.hr.set.vec.new",
     "align_file": "multilingual_trans/alignment_matrices/hr.txt"
 }
 
@@ -24,6 +24,6 @@ params_dmv={
     "train_file": "ud-treebanks-v2.2/UD_Croatian-SET/hr_set-ud-train.conllu",
     "val_file": "ud-treebanks-v2.2/UD_Croatian-SET/hr_set-ud-dev.conllu",
     "test_file": "ud-treebanks-v2.2/UD_Croatian-SET/hr_set-ud-test.conllu",
-    "vec_file": "fastText_data/wiki.hr.set.vec",
+    "vec_file": "fastText_data/wiki.hr.set.vec.new",
     "align_file": "multilingual_trans/alignment_matrices/hr.txt"
 }
