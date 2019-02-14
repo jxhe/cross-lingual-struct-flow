@@ -1,5 +1,5 @@
-# This script output to-eng-distance and number of training data 
-# statistics for each language in UD treebank, according to uriel, 
+# This script output to-eng-distance and number of training data
+# statistics for each language in UD treebank, according to uriel,
 # and then rank them in terms of GEOGRAPHIC distance
 
 import os
@@ -35,7 +35,9 @@ for name in distance["sources"]:
 fout.write("TRAIN\n")
 
 obj_id = np.asscalar(np.where(distance["sources"]==rank_obj)[0])
-res = []
+res = {}
+
+cnt = 0
 
 for root, subdirs, files in os.walk("ud-treebanks-v2.2"):
     valid_dir = False
@@ -47,6 +49,9 @@ for root, subdirs, files in os.walk("ud-treebanks-v2.2"):
             break
 
     if valid_dir:
+        if lang in res:
+            continue
+
         if lang in lang_to_id:
             identifier = lang_to_id[lang]
         else:
@@ -55,18 +60,21 @@ for root, subdirs, files in os.walk("ud-treebanks-v2.2"):
         dist = distance["data"][en_id, tgt_id]
 
         train_num = 0
-        for fname in files:
-            if fname.endswith("conllu"):
-                train = fname.strip().split('.')[0].split('-')[-1]
-                if train != "train":
-                    continue
+        # for fname in files:
+        #     if fname.endswith("conllu"):
+        #         train = fname.strip().split('.')[0].split('-')[-1]
+        #         if train != "train":
+        #             continue
 
-                with open(os.path.join(root, fname), "r", encoding="utf-8") as fdata:
-                    train_num = len(list(parse_incr(fdata)))
-                break
-        res.append(LangObj(lang, old_id, identifier, train_num, dist))
+        #         with open(os.path.join(root, fname), "r", encoding="utf-8") as fdata:
+        #             train_num = len(list(parse_incr(fdata)))
+        #         break
+        res[lang] = LangObj(lang, old_id, identifier, train_num, dist)
+        cnt += 1
+        # if cnt == 10:
+        #     break
 
-for lang_obj in sorted(res, key=lambda s: -s.distance[obj_id]):
+for lang_obj in sorted(res.values(), key=lambda s: -s.distance[obj_id]):
     fout.write("{}/{}\t".format(lang_obj.name, lang_obj.old_id))
     for num in lang_obj.distance:
         fout.write("{:.3f}\t".format(num))

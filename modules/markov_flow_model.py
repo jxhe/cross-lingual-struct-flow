@@ -107,6 +107,12 @@ class MarkovFlow(nn.Module):
             self.tparams_init = self.tparams.clone()
             self.proj_init = [param.clone() for param in self.proj_layer.parameters()]
 
+            if self.args.init_var:
+                self.init_var(train_data)
+
+            if self.args.init_var_one:
+                self.var.fill_(0.01)
+
             # self.means_init.requires_grad = False
             # self.tparams_init.requires_grad = False
             # for tensor in self.proj_init:
@@ -229,7 +235,10 @@ class MarkovFlow(nn.Module):
         for i, param in enumerate(self.proj_layer.parameters()):
             diff_proj = diff_proj + ((self.proj_init[i] - param) ** 2).sum()
 
-        return 0.5 * (self.args.beta_prior * diff_prior + self.args.beta_proj * diff_proj)
+        diff_mean = ((self.means_init - self.means) ** 2).sum()
+
+        return 0.5 * (self.args.beta_prior * diff_prior +
+                self.args.beta_proj * diff_proj + self.args.beta_mean * diff_mean)
 
     def unsupervised_loss(self, sents, masks):
         """

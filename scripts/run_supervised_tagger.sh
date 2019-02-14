@@ -7,9 +7,9 @@
 #
 
 
-python -u markov_flow_train.py \
+CUDA_VISIBLE_DEVICES=$1 python -u markov_flow_train.py \
         --lang en \
         --model nice \
         --mode supervised \
         --set_seed \
-        --taskid $1
+        --taskid $2

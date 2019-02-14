@@ -38,10 +38,12 @@ def init_config():
     parser.add_argument('--freeze_mean', action='store_true', default=False)
     parser.add_argument('--train_var', action='store_true', default=False,
             help="if make variance variable trainable")
+    parser.add_argument('--init_var', action='store_true', default=False)
     parser.add_argument('--init_var_one', action='store_true', default=False)
     parser.add_argument('--aggressive', action='store_true', default=False)
     parser.add_argument('--beta_prior', type=float, default=0., help="regularize params")
     parser.add_argument('--beta_proj', type=float, default=0., help="regularize params")
+    parser.add_argument('--beta_mean', type=float, default=0., help="regularize params")
 
     # pretrained model options
     parser.add_argument('--load_nice', default='', type=str,
@@ -65,15 +67,15 @@ def init_config():
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
 
-    id_ = "{}_{}_{}_{}_{}".format(args.lang, args.mode, args.model, args.jobid, args.taskid)
-    save_path = os.path.join(save_dir, id_ + '.pt')
-    args.save_path = save_path
-    print("model save path: ", save_path)
-
     # load config file into args
     config_file = "config.config_{}".format(args.lang)
     params = importlib.import_module(config_file).params_markov
     args = argparse.Namespace(**vars(args), **params)
+
+    id_ = "{}_{}_{}_{}_{}_{}_{}".format(args.lang, args.mode, args.model, args.couple_layers, args.cell_layers, args.jobid, args.taskid)
+    save_path = os.path.join(save_dir, id_ + '.pt')
+    args.save_path = save_path
+    print("model save path: ", save_path)
 
     # if args.tag_from != '':
     #     if args.model == 'nice':
