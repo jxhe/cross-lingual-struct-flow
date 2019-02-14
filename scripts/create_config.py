@@ -4,7 +4,7 @@
 import os
 import json
 
-fin = open("lang_list.txt", "r")
+fin = open("statistics/lang_list.txt", "r")
 params_markov = {
     "couple_layers": 8,
     "cell_layers": 1,
@@ -65,4 +65,3 @@ for line in fin:
         fout.write("params_markov="+json.dumps(params_markov, indent=4))
         fout.write("\n\n")
         fout.write("params_dmv="+json.dumps(params_dmv, indent=4))
-        
