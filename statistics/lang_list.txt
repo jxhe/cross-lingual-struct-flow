@@ -28,3 +28,9 @@ Slovenian sl SSJSST
 Spanish es GSDAnCora
 Swedish sv Talbanken
 Ukrainian uk IU
+Persian fa Seraji
+Afrikaans af AfriBooms
+Tamil ta TTB
+Telugu te MTG
+Marathi mr UFAL
+Urdu ur UDTB
