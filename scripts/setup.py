@@ -7,15 +7,16 @@ import subprocess
 parser = argparse.ArgumentParser(description='setup')
 parser.add_argument('--lang', type=str)
 parser.add_argument('--gpu', type=str)
+parser.add_argument('--command', type=str)
 parser.add_argument('--task', choices=['tag', 'parse'])
 
 args = parser.parse_args()
 
 if args.task == 'tag':
-    command = "./scripts/run_tagger.sh"
+    command = args.command
     out_dir = "exp_out/tagging"
 else:
-    command = "./scripts/run_parser.sh"
+    command = args.command
     out_dir = "exp_out/parsing"
 
 if not os.path.exists(out_dir):
@@ -36,6 +37,8 @@ id_ = max_ + 1
 out_dir = os.path.join(out_dir, str(id_))
 
 os.makedirs(out_dir)
+
+subprocess.run(["cp", command, out_dir+"/"])
 
 for lang in args.lang.split(","):
     log_path = os.path.join(out_dir, "{}.log".format(lang))
