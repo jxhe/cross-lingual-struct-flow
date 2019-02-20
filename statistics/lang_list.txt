@@ -34,3 +34,7 @@ Tamil ta TTB
 Telugu te MTG
 Marathi mr UFAL
 Urdu ur UDTB
+Tagalog tl TRG
+Vietnamese vi VTB
+Kazakh kk KTB
+Turkish tr IMST

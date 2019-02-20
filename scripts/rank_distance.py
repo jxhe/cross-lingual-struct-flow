@@ -8,9 +8,9 @@ from io import open
 from collections import namedtuple
 from conllu import parse_incr
 
-LangObj = namedtuple("lang", ["name", "old_id", "new_id", "num_train", "distance"])
+LangObj = namedtuple("lang", ["name", "old_id", "new_id", "num_train", "distance", "obj"])
 
-rank_obj = "GEOGRAPHIC"
+rank_obj = ["GEOGRAPHIC", "GENETIC", "SYNTACTIC"]
 distance = np.load("uriel_v0_2/distances/distances.npz")
 
 en_id = np.asscalar(np.where(distance["langs"]=="eng")[0])
@@ -32,9 +32,10 @@ fout = open("statistics/distance_all.txt", "w")
 fout.write("LANG\t")
 for name in distance["sources"]:
     fout.write(name + "\t")
+fout.write("AVG\t")
 fout.write("TRAIN\n")
 
-obj_id = np.asscalar(np.where(distance["sources"]==rank_obj)[0])
+obj_id = [np.asscalar(np.where(distance["sources"]==x)[0]) for x in rank_obj]
 res = {}
 
 cnt = 0
@@ -69,15 +70,17 @@ for root, subdirs, files in os.walk("ud-treebanks-v2.2"):
         #         with open(os.path.join(root, fname), "r", encoding="utf-8") as fdata:
         #             train_num = len(list(parse_incr(fdata)))
         #         break
-        res[lang] = LangObj(lang, old_id, identifier, train_num, dist)
+        dist_new = sum([dist[x] for x in obj_id]) / len(obj_id)
+        res[lang] = LangObj(lang, old_id, identifier, train_num, dist, dist_new)
         cnt += 1
         # if cnt == 10:
         #     break
 
-for lang_obj in sorted(res.values(), key=lambda s: -s.distance[obj_id]):
+for lang_obj in sorted(res.values(), key=lambda s: -s.obj):
     fout.write("{}/{}\t".format(lang_obj.name, lang_obj.old_id))
     for num in lang_obj.distance:
         fout.write("{:.3f}\t".format(num))
+    fout.write("{:.3f}\t".format(lang_obj.obj))
     fout.write("{}\n".format(lang_obj.num_train))
 
 fid.close()
