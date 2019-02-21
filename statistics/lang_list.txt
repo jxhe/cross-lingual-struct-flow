@@ -38,3 +38,6 @@ Tagalog tl TRG
 Vietnamese vi VTB
 Kazakh kk KTB
 Turkish tr IMST
+Belarusian be HSE
+Armenian hy ArmTDP
+Hungarian hu Szeged
