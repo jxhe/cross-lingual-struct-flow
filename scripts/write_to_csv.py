@@ -28,6 +28,8 @@ csv_writer = csv.writer(out_csv, delimiter=",")
 with open("statistics/lang_list.txt", "r") as fin:
     for line in fin:
         lang = line.split()[1]
+        if lang == "en":
+            continue
         row = [lang]
         if lang in hash_map:
             row += [hash_map[lang]]
