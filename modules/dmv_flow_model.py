@@ -415,17 +415,20 @@ class DMVFlow(nn.Module):
 
     def MLE_loss(self):
         # diff1 = ((self.means - self.means_init) ** 2).sum()
-        diff = ((self.attach_left - self.attach_left_init) ** 2).sum()
-        diff = diff + ((self.attach_right - self.attach_right_init) ** 2).sum()
-        diff = diff + ((self.stop_left - self.stop_left_init) ** 2).sum()
-        diff = diff + ((self.stop_right - self.stop_right_init) ** 2).sum()
-        diff = diff + ((self.root_attach_left - self.root_attach_left_init) ** 2).sum()
+        diff_prior = ((self.attach_left - self.attach_left_init) ** 2).sum()
+        diff_prior = diff_prior + ((self.attach_right - self.attach_right_init) ** 2).sum()
+        diff_prior = diff_prior + ((self.stop_left - self.stop_left_init) ** 2).sum()
+        diff_prior = diff_prior + ((self.stop_right - self.stop_right_init) ** 2).sum()
+        diff_prior = diff_prior + ((self.root_attach_left - self.root_attach_left_init) ** 2).sum()
 
-        diff = diff + ((self.means - self.means_init) ** 2).sum()
+        diff_mean = ((self.means - self.means_init) ** 2).sum()
+
+        diff_proj = 0.
         for i, param in enumerate(self.proj_layer.parameters()):
-            diff = diff + ((self.proj_init[i] - param) ** 2).sum()
+            diff_proj = diff_proj + ((self.proj_init[i] - param) ** 2).sum()
 
-        return 0.5 * self.args.beta * diff
+        return 0.5 * (self.args.beta_prior * diff_prior +
+                self.args.beta_proj * diff_proj + self.args.beta_mean * diff_mean)
 
     def up_viterbi_em(self, train_data):
         attach_left = self.attach_left.new_ones((self.num_state, self.num_state))
