@@ -52,7 +52,7 @@ def init_config():
     parser.add_argument('--beta_proj', type=float, default=0., help="regularize params")
     parser.add_argument('--beta_mean', type=float, default=0., help="regularize params")
 
-    parser.add_argument('--predict_to', type=str, default="", help="prediction of test")
+    parser.add_argument('--predict', action="store_true", default=False, help="prediction of test")
 
 
     # pretrained model options
@@ -83,6 +83,17 @@ def init_config():
 
     print("model save path: ", save_path)
 
+    pred_dir = "predict/dmv"
+
+    if not os.path.exists(pred_dir):
+        os.makedirs(pred_dir)
+
+    args.pred_file_start = "{}_parse_pred_start.conllu".format(args.lang)
+    args.pred_file_end = "{}_parse_pred_end.conllu".format(args.lang)
+
+    if not args.predict:
+        args.pred_file_start = ""
+        args.pred_file_end = ""
     # load config file into args
     config_file = "config.config_{}".format(args.lang)
     params = importlib.import_module(config_file).params_dmv
@@ -191,7 +202,7 @@ def main(args):
             model.set_dmv_params(train_data)
 
     with torch.no_grad():
-        acc_test = model.test(test_data)
+        acc_test = model.test(test_data, predict=args.pred_file_end)
         print('\nSTARTING TEST: *****acc {}*****\n'.format(acc_test))
 
     if args.up_em:
@@ -385,7 +396,7 @@ def main(args):
         # acc = model.test(train_data)
         # print('\nTRAIN: *****epoch {}, iter {}, acc {}*****\n'.format(
         #     epoch, train_iter, acc))
-        acc = model.test(test_data)
+        acc = model.test(test_data, predict=args.pred_file_end)
         print('\nTEST: *****epoch {}, iter {}, acc {}*****\n'.format(
             epoch, train_iter, acc))
     # torch.save(model.state_dict(), args.save_path)
