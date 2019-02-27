@@ -338,7 +338,7 @@ class DMVFlow(nn.Module):
 
         return res
 
-    def test(self, test_data, batch_size=10):
+    def test(self, test_data, batch_size=10, predict=""):
         """
         Args:
             gold: A nested list of heads
@@ -350,6 +350,9 @@ class DMVFlow(nn.Module):
         memory_sent_cnt = 0
 
         batch_id_ = 0
+
+        if predict != "":
+            fout = open(predict, "w", encoding="utf-8")
         # if self.args.max_len > 20:
         #     batch_size = 2
 
@@ -390,6 +393,12 @@ class DMVFlow(nn.Module):
                 cnt += length
                 dir_cnt += directed
 
+            if predict != "":
+                self.predict(fout, iter_obj, parse, test_data.id_to_pos)
+
+        if predict != "":
+            fout.close()
+
         dir_acu = dir_cnt / cnt
 
         self.log_p_parse = {}
@@ -397,6 +406,19 @@ class DMVFlow(nn.Module):
         self.right_child = {}
 
         return dir_acu
+
+    def predict(fout, iter_obj, parse, id_to_pos):
+        for pos_s, gold_s, parse_s, deprel_s, len_ in zip(iter_obj.pos.transpose(0, 1),
+                iter_obj.head.transpose(0, 1), parse, iter_obj.deps, iter_obj.mask.sum(dim=0)):
+            for i in range(int(len_)):
+                pos = id_to_pos[pos_s[i].item()]
+                head = gold_s[i].item()
+                tuple_ = parse_s[i]
+                deprel = deprel_s[i]
+
+                fout.write("{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n".format(
+                    i+1, "_", "_", pos, "_", "_", head+1, deprel, "_", tuple_[1]+1))
+
 
     def measures(self, pos_s, gold_s, parse_s, len_):
         # Helper for eval().

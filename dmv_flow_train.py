@@ -52,7 +52,7 @@ def init_config():
     parser.add_argument('--beta_proj', type=float, default=0., help="regularize params")
     parser.add_argument('--beta_mean', type=float, default=0., help="regularize params")
 
-
+    parser.add_argument('--predict_to', type=str, default="", help="prediction of test")
 
 
     # pretrained model options

@@ -3,7 +3,7 @@ import torch
 from collections import defaultdict, namedtuple
 from conllu import parse_incr, parse_tree_incr
 
-IterObj = namedtuple("iter_object", ["embed", "pos", "head", "r_deps", "l_deps", "mask"])
+IterObj = namedtuple("iter_object", ["embed", "pos", "head", "r_deps", "l_deps", "mask", "deps"])
 
 class ConlluData(object):
     """docstring for ConlluData"""
@@ -24,6 +24,7 @@ class ConlluData(object):
         heads = []
         right_num_deps = []
         left_num_deps = []
+        deps = []
         fin = open(fname, "r", encoding="utf-8")
         fin_tree = open(fname, "r", encoding="utf-8")
         data_file_tree = parse_tree_incr(fin_tree)
@@ -35,6 +36,7 @@ class ConlluData(object):
             right_num_deps_ = []
             left_num_deps_ = []
             sent_n = []
+            deps_list = []
 
             # delete multi-word token
             for token in sent:
@@ -47,6 +49,7 @@ class ConlluData(object):
                 tag_list.append(pos_id)
                 # -1 represents root
                 head_list.append(token["head"]-1)
+                deps_list.append(token["deprel"])
 
             if len(tag_list) > max_len:
                 continue
@@ -69,11 +72,13 @@ class ConlluData(object):
             right_num_deps.append(right_num_deps_)
             left_num_deps.append(left_num_deps_)
             trees.append(tree)
+            deps.append(deps_list)
 
         self.trees = trees
         self.text = text
         self.postags = tags
         self.heads = heads
+        self.deps = deps
         self.right_num_deps = right_num_deps
         self.left_num_deps = left_num_deps
         self.pos_to_id = pos_to_id
@@ -201,9 +206,10 @@ class ConlluData(object):
             batch_head = [self.heads[x] for x in index_]
             batch_right_num_deps = [self.right_num_deps[x] for x in index_]
             batch_left_num_deps = [self.left_num_deps[x] for x in index_]
+            batch_deps = [self.deps[x] for x in index_]
 
             embed_t, pos_t, head_t, r_deps_t, l_deps_t, masks_t = self.to_input_tensor(
                 batch_embed, batch_pos, batch_head, batch_right_num_deps, batch_left_num_deps)
 
-            yield IterObj(embed_t, pos_t, head_t, r_deps_t, l_deps_t, masks_t)
+            yield IterObj(embed_t, pos_t, head_t, r_deps_t, l_deps_t, masks_t, batch_deps)
 
