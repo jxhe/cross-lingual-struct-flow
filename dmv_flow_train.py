@@ -48,9 +48,11 @@ def init_config():
     parser.add_argument('--pos_emb_dim', type=int, default=0)
     parser.add_argument('--good_init', action="store_true", default=False)
     parser.add_argument('--up_em', action="store_true", default=False)
-    parser.add_argument('--beta', type=float, default=0., help="regularize params")
+    parser.add_argument('--beta_prior', type=float, default=0., help="regularize params")
+    parser.add_argument('--beta_proj', type=float, default=0., help="regularize params")
+    parser.add_argument('--beta_mean', type=float, default=0., help="regularize params")
 
-
+    parser.add_argument('--predict', action="store_true", default=False, help="prediction of test")
 
 
     # pretrained model options
@@ -81,6 +83,17 @@ def init_config():
 
     print("model save path: ", save_path)
 
+    pred_dir = "predict/dmv"
+
+    if not os.path.exists(pred_dir):
+        os.makedirs(pred_dir)
+
+    args.pred_file_start = "{}_parse_pred_start.conllu".format(args.lang)
+    args.pred_file_end = "{}_parse_pred_end.conllu".format(args.lang)
+
+    if not args.predict:
+        args.pred_file_start = ""
+        args.pred_file_end = ""
     # load config file into args
     config_file = "config.config_{}".format(args.lang)
     params = importlib.import_module(config_file).params_dmv
@@ -148,11 +161,11 @@ def main(args):
     opt_dict = {"not_improved": 0, "prior_lr": args.prior_lr, "best_score": 0, "proj_lr": args.proj_lr}
 
     if args.prior_opt == "adam":
-        prior_optimizer = torch.optim.Adam(model.prior_group, lr=args.prior_lr)
+        prior_optimizer = torch.optim.Adam(model.prior_group, lr=args.prior_lr, weight_decay=.1)
     elif args.prior_opt == "sgd":
         prior_optimizer = torch.optim.SGD(model.prior_group, lr=args.prior_lr)
     elif args.prior_opt == "lbfgs":
-        optimizer = torch.optim.LBFGS(model.parameters(), lr=args.prior_lr)
+        optimizer = torch.optim.LBFGS(model.prior_group, lr=args.prior_lr)
     else:
         raise ValueError("{} is not supported".format(args.prior_opt))
 
@@ -178,7 +191,8 @@ def main(args):
 
     best_acc = 0.
     if args.mode == "unsupervised":
-        nrep = 100
+        # nrep = 100
+        nrep = 1
     else:
         nrep = 3
 
@@ -188,7 +202,7 @@ def main(args):
             model.set_dmv_params(train_data)
 
     with torch.no_grad():
-        acc_test = model.test(test_data)
+        acc_test = model.test(test_data, predict=args.pred_file_end)
         print('\nSTARTING TEST: *****acc {}*****\n'.format(acc_test))
 
     if args.up_em:
@@ -296,13 +310,13 @@ def main(args):
 
                 avg_ll_loss = (nll + jacobian_loss) / batch_size
 
-                if args.beta > 0:
+                if args.beta_prior > 0 or args.beta_proj > 0 or args.beta_mean > 0:
                     avg_ll_loss = avg_ll_loss + model.MLE_loss()
 
                 avg_ll_loss.backward()
 
                 torch.nn.utils.clip_grad_norm_(model.proj_group, 5.0)
-                # torch.nn.utils.clip_grad_norm_(model.prior_group, 5.0)
+                torch.nn.utils.clip_grad_norm_(model.prior_group, 5.0)
                 # torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
                 proj_optimizer.step()
 
@@ -382,7 +396,7 @@ def main(args):
         # acc = model.test(train_data)
         # print('\nTRAIN: *****epoch {}, iter {}, acc {}*****\n'.format(
         #     epoch, train_iter, acc))
-        acc = model.test(test_data)
+        acc = model.test(test_data, predict=args.pred_file_end)
         print('\nTEST: *****epoch {}, iter {}, acc {}*****\n'.format(
             epoch, train_iter, acc))
     # torch.save(model.state_dict(), args.save_path)
