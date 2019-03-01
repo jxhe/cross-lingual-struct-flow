@@ -166,11 +166,12 @@ class ConlluData(object):
             batch_head = [batch_head[x] for x in sort_index]
             batch_right_num_deps = [batch_right_num_deps[x] for x in sort_index]
             batch_left_num_deps = [batch_left_num_deps[x] for x in sort_index]
+            batch_deps = [self.deps[x] for x in sort_index]
 
             embed_t, pos_t, head_t, r_deps_t, l_deps_t, masks_t = self.to_input_tensor(
                 batch_embed, batch_pos, batch_head, batch_right_num_deps, batch_left_num_deps)
 
-            yield IterObj(embed_t, pos_t, head_t, r_deps_t, l_deps_t, masks_t)
+            yield IterObj(embed_t, pos_t, head_t, r_deps_t, l_deps_t, masks_t, batch_deps)
 
     def data_iter_efficient(self, mem_limit=250):
         """This function batches similar-length sentences together,
