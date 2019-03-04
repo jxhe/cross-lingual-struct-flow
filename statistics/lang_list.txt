@@ -29,3 +29,7 @@ Ukrainian uk IU
 Persian fa Seraji
 Urdu ur UDTB
 Turkish tr IMST
+Swedish sv Talbanken
+Danish da DDT
+Dutch nl AlpinoLassySmall
+German de GSD
