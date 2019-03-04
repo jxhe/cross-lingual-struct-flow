@@ -21,24 +21,15 @@ from .projection import *
 
 
 class MarkovFlow(nn.Module):
-    def __init__(self, args, num_dims):
+    def __init__(self, args, num_dims, num_vocab):
         super(MarkovFlow, self).__init__()
 
         self.args = args
         self.device = args.device
 
-        # Gaussian Variance
-        self.var = Parameter(torch.zeros(num_dims, dtype=torch.float32))
-
-        if not args.train_var:
-            self.var.requires_grad = False
-
         self.num_state = args.num_state
         self.num_dims = num_dims
-        self.couple_layers = args.couple_layers
-        self.cell_layers = args.cell_layers
-        self.hidden_units = num_dims // 2
-        self.lstm_hidden_units = self.num_dims
+        self.num_vocab = num_vocab
 
         # transition parameters in log space
         self.tparams = Parameter(
@@ -46,38 +37,20 @@ class MarkovFlow(nn.Module):
 
         self.prior_group = [self.tparams]
 
-        # Gaussian means
-        self.means = Parameter(torch.Tensor(self.num_state, self.num_dims))
+        # tag embedding
+        self.tag_embed = Parameter(torch.Tensor(self.num_state, self.num_dims))
+        self.word_embed = torch.Tensor(self.num_vocab, self.num_dims)
+        self.transform = Parameter(torch.Tensor(self.num_state, self.num_state))
+        self.correction = Parameter(torch.Tensor(self.num_state, self.num_vocab))
 
         if args.mode == "unsupervised" and args.freeze_prior:
             self.tparams.requires_grad = False
 
-        if args.mode == "unsupervised" and args.freeze_mean:
-            self.means.requires_grad = False
+        self.proj_group = [self.tag_embed]
 
-        if args.model == 'nice':
-            self.proj_layer = NICETrans(self.couple_layers,
-                                        self.cell_layers,
-                                        self.hidden_units,
-                                        self.num_dims,
-                                        self.device)
-        elif args.model == "lstmnice":
-            self.proj_layer = LSTMNICE(self.args.lstm_layers,
-                                       self.args.couple_layers,
-                                       self.args.cell_layers,
-                                       self.lstm_hidden_units,
-                                       self.hidden_units,
-                                       self.num_dims,
-                                       self.device)
+        if args.mode == "unsupervised":
+            self.proj_group += [self.transform, self.correction]
 
-        if args.mode == "unsupervised" and args.freeze_proj:
-            for param in self.proj_layer.parameters():
-                param.requires_grad = False
-
-        if args.model == "gaussian":
-            self.proj_group = [self.means, self.var]
-        else:
-            self.proj_group = list(self.proj_layer.parameters()) + [self.means, self.var]
 
         # prior
         self.pi = torch.zeros(self.num_state,
@@ -87,7 +60,7 @@ class MarkovFlow(nn.Module):
 
         self.pi = torch.log(self.pi)
 
-    def init_params(self, train_data):
+    def init_params(self, train_data, word_vec_dict, id_to_word):
         """
         init_seed:(sents, masks)
         sents: (seq_length, batch_size, features)
@@ -98,20 +71,20 @@ class MarkovFlow(nn.Module):
         # initialize transition matrix params
         # self.tparams.data.uniform_().add_(1)
         self.tparams.data.uniform_()
+        self.correction.zero_()
+        nn.init.eye_(self.transform)
+
+        word_embed = [word_vec_dict[i] for i in range(len(id_to_word))]
+        self.word_embed = torch.Tensor(word_embed, dtype=torch.float32, requires_grad=False, device=self.device)
 
         # load pretrained model
         if self.args.load_nice != '':
-            self.load_state_dict(torch.load(self.args.load_nice), strict=True)
+            self.load_state_dict(torch.load(self.args.load_nice), strict=False)
 
-            self.means_init = self.means.clone()
+            self.tag_embed_init = self.tag_embed.clone()
             self.tparams_init = self.tparams.clone()
-            self.proj_init = [param.clone() for param in self.proj_layer.parameters()]
-
-            if self.args.init_var:
-                self.init_var(train_data)
-
-            if self.args.init_var_one:
-                self.var.fill_(0.01)
+            self.transform_init = torch.eyes(self.num_state)
+            self.correction_init = torch.zeros((self.num_state, self.num_vocab))
 
             # self.means_init.requires_grad = False
             # self.tparams_init.requires_grad = False
@@ -119,40 +92,6 @@ class MarkovFlow(nn.Module):
             #     tensor.requires_grad = False
 
             return
-
-        # load pretrained Gaussian baseline
-        if self.args.load_gaussian != '':
-            self.load_state_dict(torch.load(self.args.load_gaussian), strict=False)
-
-        # initialize mean and variance with empirical values
-        # with torch.no_grad():
-        #     sents, tags, masks = init_seed
-        #     sents, _ = self.transform(sents, masks)
-        #     seq_length, _, features = sents.size()
-        #     flat_sents = sents.view(-1, features)
-        #     seed_mean = torch.sum(masks.view(-1, 1).expand_as(flat_sents) *
-        #                           flat_sents, dim=0) / masks.sum()
-        #     seed_var = torch.sum(masks.view(-1, 1).expand_as(flat_sents) *
-        #                          ((flat_sents - seed_mean.expand_as(flat_sents)) ** 2),
-        #                          dim = 0) / masks.sum()
-        #     self.var.copy_(seed_var)
-
-        #     # add noise to the pretrained Gaussian mean
-        #     if self.args.load_gaussian != '' and self.args.model == 'nice':
-        #         self.means.data.add_(seed_mean.data.expand_as(self.means.data))
-        #     elif self.args.load_gaussian == '' and self.args.load_nice == '':
-        #         self.means.data.normal_().mul_(0.04)
-        #         self.means.data.add_(seed_mean.data.expand_as(self.means.data))
-
-        #     if self.args.init_var_one:
-        #         self.var.fill_(1.0)
-
-        self.init_mean(train_data)
-        self.var.fill_(0.1)
-        self.init_var(train_data)
-
-        if self.args.init_var_one:
-            self.var.fill_(1.0)
 
     def init_mean(self, train_data):
         emb_dict = {}
@@ -230,20 +169,17 @@ class MarkovFlow(nn.Module):
         diff_prior = ((self.tparams - self.tparams_init) ** 2).sum()
 
         # diff = diff1 + diff2
-        diff_proj = 0.
+        diff_tag = ((self.tag_embed - self.tag_embed_init) ** 2).sum()
 
-        for i, param in enumerate(self.proj_layer.parameters()):
-            diff_proj = diff_proj + ((self.proj_init[i] - param) ** 2).sum()
+        diff_trans = ((self.transform - self.transform_init) ** 2).sum()
+        diff_correct = ((self.correction - self.correction_init) ** 2).sum()
 
-        diff_mean = ((self.means_init - self.means) ** 2).sum()
+        return 0.5 * self.args.beta * (diff_prior + diff_tag + diff_trans + diff_correct)
 
-        return 0.5 * (self.args.beta_prior * diff_prior +
-                self.args.beta_proj * diff_proj + self.args.beta_mean * diff_mean)
-
-    def unsupervised_loss(self, sents, masks):
+    def unsupervised_loss(self, words, masks):
         """
         Args:
-            sents: (sent_length, batch_size, self.num_dims)
+            words: (sent_length, batch_size)
             masks: (sent_length, batch_size)
 
         Returns: Tensor1, Tensor2
@@ -252,17 +188,16 @@ class MarkovFlow(nn.Module):
 
 
         """
-        max_length, batch_size, _ = sents.size()
-        sents, jacobian_loss = self.transform(sents, masks)
-
-        assert self.var.data.min() > 0
+        self.update_emission()
+        max_length, batch_size = words.size()
+        # sents, jacobian_loss = self.transform(sents, masks)
 
         self.logA = self._calc_logA()
-        self.log_density_c = self._calc_log_density_c()
+        # self.log_density_c = self._calc_log_density_c()
 
-        alpha = self.pi + self._eval_density(sents[0])
+        alpha = self.pi + self._eval_density(words[0])
         for t in range(1, max_length):
-            density = self._eval_density(sents[t])
+            density = self._eval_density(sents[t], words[t])
             mask_ep = masks[t].expand(self.num_state, batch_size) \
                       .transpose(0, 1)
             alpha = torch.mul(mask_ep,
@@ -272,12 +207,12 @@ class MarkovFlow(nn.Module):
         # calculate objective from log space
         objective = torch.sum(log_sum_exp(alpha, dim=1))
 
-        return -objective, jacobian_loss
+        return -objective
 
-    def supervised_loss(self, sents, tags, masks):
+    def supervised_loss(self, words, tags, masks):
         """
         Args:
-            sents: (sent_length, batch_size, num_dims)
+            words: (sent_length, batch_size)
             masks: (sent_length, batch_size)
             tags:  (sent_length, batch_size)
 
@@ -287,30 +222,18 @@ class MarkovFlow(nn.Module):
 
         """
 
-        sent_len, batch_size, _ = sents.size()
+        sent_len, batch_size = words.size()
+        self.update_emission()
 
-        # (sent_length, batch_size, num_dims)
-        sents, jacobian_loss = self.transform(sents, masks)
-
-        # ()
-        log_density_c = self._calc_log_density_c()
-
-        # (1, 1, num_state, num_dims)
-        means = self.means.view(1, 1, self.num_state, self.num_dims)
-        means = means.expand(sent_len, batch_size,
-            self.num_state, self.num_dims)
-        tag_id = tags.view(*tags.size(), 1, 1).expand(sent_len,
-            batch_size, 1, self.num_dims)
-
-        # (sent_len, batch_size, num_dims)
-        means = torch.gather(means, dim=2, index=tag_id).squeeze(2)
-
-        var = self.var.view(1, 1, self.num_dims)
-
+        log_emission_prob = self.log_emission.view(1, 1, *self.log_emission.size())\
+                            .expand(sent_len, batch_size, self.num_vocab, self.num_state)
+        words = words.view(sent_len, batch_size, 1, 1).expand(
+            sent_len, batch_size, 1, self.num_state)
+        log_emission_prob = torch.gather(log_emission_prob, index=words, dim=2).squeeze(2)
+        tags_exp = tags.unsqueeze(-1)
 
         # (sent_len, batch_size)
-        log_emission_prob = log_density_c - \
-                       0.5 * torch.sum((means-sents) ** 2 / var, dim=-1)
+        log_emission_prob = torch.gather(log_emission_prob, index=tags_exp, dim=2).squeeze(2)
 
         log_emission_prob = torch.mul(masks, log_emission_prob).sum()
 
@@ -346,7 +269,7 @@ class MarkovFlow(nn.Module):
 
         log_trans_prob = log_trans_prior + log_trans_prob.sum()
 
-        return -(log_trans_prob + log_emission_prob), jacobian_loss
+        return -(log_trans_prob + log_emission_prob)
 
 
     def _calc_alpha(self, sents, masks):
@@ -396,23 +319,35 @@ class MarkovFlow(nn.Module):
 
         return beta
 
+    def update_emission(self):
+        if self.args.mode == "unsupervised":
+            word_emb = torch.mm(self.word_embed, self.transform)
+        else:
+            word_emb = self.word_embed
+
+        # (num_vocab, num_state)
+        log_emission = torch.mm(word_emb, self.tag_embed.transpose(1, 0))
+
+        if self.args.mode == "unsupervised":
+            log_emission = log_emission + self.correction.transpose(1, 0)
+
+        self.log_emission =  F.log_softmax(log_emission, dim=0)
+
+
     def _eval_density(self, words):
         """
         Args:
-            words: (batch_size, self.num_dims)
+            words: (batch_size)
 
         Returns: Tensor1
             Tensor1: the density tensor with shape (batch_size, num_state)
         """
 
         batch_size = words.size(0)
-        ep_size = torch.Size([batch_size, self.num_state, self.num_dims])
-        words = words.unsqueeze(dim=1).expand(ep_size)
-        means = self.means.expand(ep_size)
-        var = self.var.expand(ep_size)
+        log_emission = self.log_emission.expand(batch_size, *self.log_emission.size())
+        words = words.view(batch_size, 1, 1).expand(batch_size, 1, self.num_state)
 
-        return self.log_density_c - \
-               0.5 * torch.sum((means-words) ** 2 / var, dim=2)
+        return torch.gather(log_emission, index=words, dim=1).squeeze(1)
 
     def _calc_logA(self):
         return (self.tparams - \
@@ -424,27 +359,26 @@ class MarkovFlow(nn.Module):
                 log_sum_exp(self.emission, dim=1, keepdim=True) \
                 .expand(self.num_state, self.vocab_size)
 
-    def _viterbi(self, sents_var, masks):
+    def _viterbi(self, sents, masks):
         """
         Args:
-            sents_var: (sent_length, batch_size, num_dims)
+            sents: (sent_length, batch_size)
             masks: (sent_length, batch_size)
         """
 
-        self.log_density_c = self._calc_log_density_c()
         self.logA = self._calc_logA()
 
         length, batch_size = masks.size()
 
         # (batch_size, num_state)
-        delta = self.pi + self._eval_density(sents_var[0])
+        delta = self.pi + self._eval_density(sents[0])
 
         ep_size = torch.Size([batch_size, self.num_state, self.num_state])
         index_all = []
 
         # forward calculate delta
         for t in range(1, length):
-            density = self._eval_density(sents_var[t])
+            density = self._eval_density(sents[t])
             delta_new = self.logA.expand(ep_size) + \
                     density.unsqueeze(dim=1).expand(ep_size) + \
                     delta.unsqueeze(dim=2).expand(ep_size)
@@ -498,11 +432,9 @@ class MarkovFlow(nn.Module):
 
         for iter_obj in test_data.data_iter(batch_size=self.args.batch_size,
                                             shuffle=False):
-            sents_t = iter_obj.embed
+            sents_t = iter_obj.words
             masks = iter_obj.mask
             tags_t = iter_obj.pos
-
-            sents_t, _ = self.transform(sents_t, masks)
 
             # index: (batch_size, seq_length)
             index = self._viterbi(sents_t, masks)
@@ -558,11 +490,9 @@ class MarkovFlow(nn.Module):
         for iter_obj in test_data.data_iter(batch_size=self.args.batch_size,
                                             shuffle=False):
             total += iter_obj.mask.sum().item()
-            sents_t = iter_obj.embed
+            sents_t = iter_obj.words
             tags_t = iter_obj.pos
             masks = iter_obj.mask
-
-            sents_t, _ = self.transform(sents_t, masks)
 
             # index: (batch_size, seq_length)
             index = self._viterbi(sents_t, masks)

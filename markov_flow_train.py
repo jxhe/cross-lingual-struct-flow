@@ -62,7 +62,7 @@ def init_config():
     args = parser.parse_args()
     args.cuda = torch.cuda.is_available()
 
-    save_dir = "dump_models/markov"
+    save_dir = "dump_models/baseline"
 
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
@@ -72,7 +72,7 @@ def init_config():
     params = importlib.import_module(config_file).params_markov
     args = argparse.Namespace(**vars(args), **params)
 
-    id_ = "{}_{}_{}_{}_{}_{}_{}".format(args.lang, args.mode, args.model, args.couple_layers, args.cell_layers, args.jobid, args.taskid)
+    id_ = "{}_{}_{}_{}_{}".format(args.lang, args.mode, args.model, args.jobid, args.taskid)
     save_path = os.path.join(save_dir, id_ + '.pt')
     args.save_path = save_path
     print("model save path: ", save_path)
@@ -106,10 +106,12 @@ def main(args):
     args.device = device
     train_data = ConlluData(args.train_file, word_vec_dict,
         device=device, pos_to_id_dict=pos_to_id)
+
+    word_to_id = train_data.word_to_id
     val_data = ConlluData(args.val_file, word_vec_dict,
-        device=device, pos_to_id_dict=pos_to_id)
+        device=device, pos_to_id_dict=pos_to_id, word_to_id_dict=word_to_id)
     test_data = ConlluData(args.test_file, word_vec_dict,
-        device=device, pos_to_id_dict=pos_to_id)
+        device=device, pos_to_id_dict=pos_to_id, word_to_id_dict=word_to_id)
 
 
     num_dims = len(train_data.embed[0][0])
@@ -125,10 +127,10 @@ def main(args):
 
     log_niter = (train_data.length//args.batch_size)//10
 
-    model = MarkovFlow(args, num_dims).to(device)
+    model = MarkovFlow(args, num_dims, len(word_to_id)).to(device)
 
     with torch.no_grad():
-        model.init_params(train_data)
+        model.init_params(train_data, word_vec_dict, train_data.id_to_word)
     print("complete init")
 
     # if args.tag_from != '':
@@ -213,21 +215,21 @@ def main(args):
             train_iter += 1
             batch_size = iter_obj.pos.size(1)
             num_words = iter_obj.mask.sum().item()
-            sents_t, tags_t, masks = iter_obj.embed, iter_obj.pos, iter_obj.mask
+            sents_t, tags_t, masks = iter_obj.words, iter_obj.pos, iter_obj.mask
             # optimizer.zero_grad()
             prior_optimizer.zero_grad()
             proj_optimizer.zero_grad()
 
             if args.mode == "unsupervised":
-                nll, jacobian_loss = model.unsupervised_loss(sents_t, masks)
+                nll = model.unsupervised_loss(sents_t, masks)
             elif args.mode == "supervised":
-                nll, jacobian_loss = model.supervised_loss(sents_t, tags_t, masks)
+                nll  = model.supervised_loss(sents_t, tags_t, masks)
             else:
                 raise ValueError("{} mode is not supported".format(args.mode))
 
-            avg_ll_loss = (nll + jacobian_loss)/batch_size
+            avg_ll_loss = nll/batch_size
 
-            if args.beta_prior > 0 or args.beta_proj > 0:
+            if args.beta > 0:
                 avg_ll_loss = avg_ll_loss + model.MLE_loss()
                 # avg_ll_loss = model.MLE_loss()
 
@@ -249,7 +251,6 @@ def main(args):
             obj_val = log_likelihood_val + jacobian_val
 
             report_ll += log_likelihood_val
-            report_jc += jacobian_val
             report_obj += obj_val
             report_num_words += num_words
 

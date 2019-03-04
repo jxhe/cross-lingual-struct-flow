@@ -10,7 +10,8 @@ from conllu import parse_incr
 
 LangObj = namedtuple("lang", ["name", "old_id", "new_id", "num_train", "distance", "obj"])
 
-rank_obj = ["GEOGRAPHIC", "GENETIC", "SYNTACTIC"]
+# rank_obj = ["GEOGRAPHIC", "GENETIC", "SYNTACTIC"]
+rank_obj = ["GEOGRAPHIC", "GENETIC", "SYNTACTIC", "INVENTORY", "PHONOLOGICAL"]
 distance = np.load("uriel_v0_2/distances/distances.npz")
 
 en_id = np.asscalar(np.where(distance["langs"]=="eng")[0])
@@ -27,7 +28,7 @@ for line in fid:
 
 print("complete mapping identifier")
 
-fout = open("statistics/distance_all.txt", "w")
+fout = open("statistics/distance_all_allmetrics.txt", "w")
 
 fout.write("LANG\t")
 for name in distance["sources"]:
