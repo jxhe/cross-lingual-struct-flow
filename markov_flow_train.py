@@ -41,9 +41,7 @@ def init_config():
     parser.add_argument('--init_var', action='store_true', default=False)
     parser.add_argument('--init_var_one', action='store_true', default=False)
     parser.add_argument('--aggressive', action='store_true', default=False)
-    parser.add_argument('--beta_prior', type=float, default=0., help="regularize params")
-    parser.add_argument('--beta_proj', type=float, default=0., help="regularize params")
-    parser.add_argument('--beta_mean', type=float, default=0., help="regularize params")
+    parser.add_argument('--beta', type=float, default=0., help="regularize params")
 
     # pretrained model options
     parser.add_argument('--load_nice', default='', type=str,
@@ -114,7 +112,7 @@ def main(args):
         device=device, pos_to_id_dict=pos_to_id, word_to_id_dict=word_to_id)
 
 
-    num_dims = len(train_data.embed[0][0])
+    num_dims = len(word_vec_dict[train_data.id_to_word[0]])
     print('complete reading data')
 
     print("embedding dims {}".format(num_dims))
@@ -130,7 +128,7 @@ def main(args):
     model = MarkovFlow(args, num_dims, len(word_to_id)).to(device)
 
     with torch.no_grad():
-        model.init_params(train_data, word_vec_dict, train_data.id_to_word)
+        model.init_params(train_data, word_vec_dict, test_data.id_to_word)
     print("complete init")
 
     # if args.tag_from != '':
@@ -175,7 +173,7 @@ def main(args):
         m1, vm, oneone = model.test_unsupervised(test_data)
         print("\nTEST: M1 {}, VM {}, one-to-one {}".format(m1, vm, oneone))
     print("\n*****starting acc {}, max_var {:.4f}, min_var {:.4f}*****\n".format(
-          acc, model.var.max().item(), model.var.min().item()))
+          acc, 0, 0))
     print("\nstarting: M1 {}, VM {}, one-to-one {}".format(m1, vm, oneone))
 
     model.train()
@@ -237,7 +235,7 @@ def main(args):
 
             if args.mode != "unsupervised":
                 # torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
-                torch.nn.utils.clip_grad_norm_(model.proj_layer.parameters(), 5.0)
+                torch.nn.utils.clip_grad_norm_(model.proj_group, 5.0)
             else:
                 torch.nn.utils.clip_grad_norm_(model.proj_group, 5.0)
                 # torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
@@ -247,8 +245,7 @@ def main(args):
             proj_optimizer.step()
 
             log_likelihood_val = -nll.item()
-            jacobian_val = -jacobian_loss.item()
-            obj_val = log_likelihood_val + jacobian_val
+            obj_val = log_likelihood_val
 
             report_ll += log_likelihood_val
             report_obj += obj_val
@@ -257,8 +254,8 @@ def main(args):
             if train_iter % log_niter == 0:
                 print('epoch %d, iter %d, log_likelihood %.2f, jacobian %.2f, obj %.2f, max_var %.4f ' \
                       'min_var %.4f time elapsed %.2f sec' % (epoch, train_iter, report_ll / report_num_words, \
-                      report_jc / report_num_words, report_obj / report_num_words, model.var.max(), \
-                      model.var.min(), time.time() - begin_time))
+                      report_jc / report_num_words, report_obj / report_num_words, 0, \
+                      0, time.time() - begin_time))
 
                 # if args.mode == "unsupervised":
                 #     with torch.no_grad():

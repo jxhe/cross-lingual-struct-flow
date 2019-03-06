@@ -144,12 +144,13 @@ class ConlluData(object):
         for i in range(batch_num):
             batch_ids = index_arr[i * batch_size: (i + 1) * batch_size]
             batch_pos = []
+            batch_words = []
             for index in batch_ids:
-                batch_ids += [self.text[index]]
+                batch_words += [self.text[index]]
                 batch_pos += [self.postags[index]]
 
 
-            id_t, pos_t, masks_t = self.to_input_tensor(batch_ids, batch_pos)
+            id_t, pos_t, masks_t = self.to_input_tensor(batch_words, batch_pos)
 
             yield IterObj(id_t, pos_t, masks_t)
 

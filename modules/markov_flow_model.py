@@ -39,9 +39,12 @@ class MarkovFlow(nn.Module):
 
         # tag embedding
         self.tag_embed = Parameter(torch.Tensor(self.num_state, self.num_dims))
+        self.tag_embed.requires_grad = False
         self.word_embed = torch.Tensor(self.num_vocab, self.num_dims)
-        self.transform = Parameter(torch.Tensor(self.num_state, self.num_state))
-        self.correction = Parameter(torch.Tensor(self.num_state, self.num_vocab))
+
+        if args.mode == "unsupervised":
+            self.transform = Parameter(torch.Tensor(self.num_dims, self.num_dims))
+            self.correction = Parameter(torch.Tensor(self.num_state, self.num_vocab))
 
         if args.mode == "unsupervised" and args.freeze_prior:
             self.tparams.requires_grad = False
@@ -71,11 +74,13 @@ class MarkovFlow(nn.Module):
         # initialize transition matrix params
         # self.tparams.data.uniform_().add_(1)
         self.tparams.data.uniform_()
-        self.correction.zero_()
-        nn.init.eye_(self.transform)
 
-        word_embed = [word_vec_dict[i] for i in range(len(id_to_word))]
-        self.word_embed = torch.Tensor(word_embed, dtype=torch.float32, requires_grad=False, device=self.device)
+        if self.args.mode == "unsupervised":
+            self.correction.zero_()
+            nn.init.eye_(self.transform)
+
+        word_embed = [word_vec_dict[id_to_word[i]] if id_to_word[i] in word_vec_dict else np.zeros(self.num_dims) for i in range(len(id_to_word))]
+        self.word_embed = torch.tensor(word_embed, dtype=torch.float32, requires_grad=False, device=self.device)
 
         # load pretrained model
         if self.args.load_nice != '':
@@ -83,8 +88,8 @@ class MarkovFlow(nn.Module):
 
             self.tag_embed_init = self.tag_embed.clone()
             self.tparams_init = self.tparams.clone()
-            self.transform_init = torch.eyes(self.num_state)
-            self.correction_init = torch.zeros((self.num_state, self.num_vocab))
+            self.transform_init = torch.eye(self.num_dims, requires_grad=False, device=self.device)
+            self.correction_init = torch.zeros((self.num_state, self.num_vocab), requires_grad=False, device=self.device)
 
             # self.means_init.requires_grad = False
             # self.tparams_init.requires_grad = False
@@ -93,30 +98,30 @@ class MarkovFlow(nn.Module):
 
             return
 
+        self.init_mean(train_data)
+
     def init_mean(self, train_data):
         emb_dict = {}
         cnt_dict = Counter()
         for iter_obj in train_data.data_iter(self.args.batch_size):
-            sents_t = iter_obj.embed
-            sents_t, _ = self.transform(sents_t, iter_obj.mask)
+            sents_t = iter_obj.words
             sents_t = sents_t.transpose(0, 1)
             pos_t = iter_obj.pos.transpose(0, 1)
             mask_t = iter_obj.mask.transpose(0, 1)
-
-
-            for emb_s, tagid_s, mask_s in zip(sents_t, pos_t, mask_t):
-                for tagid, emb, mask in zip(tagid_s, emb_s, mask_s):
+            for sent_s, tagid_s, mask_s in zip(sents_t, pos_t, mask_t):
+                for tagid, word, mask in zip(tagid_s, sent_s, mask_s):
                     tagid = tagid.item()
                     mask = mask.item()
+                    wordid = word.item()
                     if tagid in emb_dict:
-                        emb_dict[tagid] = emb_dict[tagid] + emb * mask
+                        emb_dict[tagid] = emb_dict[tagid] + self.word_embed[wordid] * mask
                     else:
-                        emb_dict[tagid] = emb * mask
+                        emb_dict[tagid] = self.word_embed[wordid] * mask
 
                     cnt_dict[tagid] += mask
 
         for tagid in emb_dict:
-            self.means[tagid] = emb_dict[tagid] / cnt_dict[tagid]
+            self.tag_embed[tagid] = emb_dict[tagid] / cnt_dict[tagid]
 
     def init_var(self, train_data):
         cnt = 0
@@ -149,20 +154,6 @@ class MarkovFlow(nn.Module):
 
         return -self.num_dims/2.0 * (math.log(2) + \
                 math.log(np.pi)) - 0.5 * torch.sum(torch.log(self.var))
-
-    def transform(self, x, masks=None):
-        """
-        Args:
-            x: (sent_length, batch_size, num_dims)
-        """
-        jacobian_loss = torch.zeros(1, device=self.device, requires_grad=False)
-
-        if self.args.model != 'gaussian':
-            x, jacobian_loss_new = self.proj_layer(x, masks)
-            jacobian_loss = jacobian_loss + jacobian_loss_new
-
-
-        return x, jacobian_loss
 
     def MLE_loss(self):
         # diff1 = ((self.means - self.means_init) ** 2).sum()
@@ -197,7 +188,7 @@ class MarkovFlow(nn.Module):
 
         alpha = self.pi + self._eval_density(words[0])
         for t in range(1, max_length):
-            density = self._eval_density(sents[t], words[t])
+            density = self._eval_density(words[t])
             mask_ep = masks[t].expand(self.num_state, batch_size) \
                       .transpose(0, 1)
             alpha = torch.mul(mask_ep,
@@ -430,6 +421,8 @@ class MarkovFlow(nn.Module):
         index_all = []
         eval_tags = []
 
+        self.update_emission()
+
         for iter_obj in test_data.data_iter(batch_size=self.args.batch_size,
                                             shuffle=False):
             sents_t = iter_obj.words
@@ -486,6 +479,8 @@ class MarkovFlow(nn.Module):
 
         for i in range(self.num_state):
             cnt_stats[i] = Counter()
+
+        self.update_emission()
 
         for iter_obj in test_data.data_iter(batch_size=self.args.batch_size,
                                             shuffle=False):

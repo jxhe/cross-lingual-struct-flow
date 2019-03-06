@@ -9,12 +9,13 @@ import importlib
 
 import torch
 import numpy as np
+import adabound
 
 from modules import *
 
 from multilingual_trans.fasttext import FastVector
 
-lr_decay = 0.5
+lr_decay = 1.0
 
 def init_config():
 
@@ -30,8 +31,8 @@ def init_config():
                          default='supervised')
 
     # optimization params
-    parser.add_argument('--proj_opt', choices=['adam', 'sgd'], default='adam')
-    parser.add_argument('--prior_opt', choices=['adam', 'sgd', "lbfgs"], default='adam')
+    parser.add_argument('--proj_opt', choices=['adam', 'sgd', 'adabound', "rmsprop"], default='adam')
+    parser.add_argument('--prior_opt', choices=['adam', 'sgd', 'adabound', "lbfgs", "rmsprop"], default='adam')
     parser.add_argument('--prior_lr', type=float, default=0.001)
     parser.add_argument('--proj_lr', type=float, default=0.001)
     parser.add_argument('--prob_const', type=float, default=1.0)
@@ -90,6 +91,9 @@ def init_config():
 
     args.pred_file_start = "{}_parse_pred_start.conllu".format(args.lang)
     args.pred_file_end = "{}_parse_pred_end.conllu".format(args.lang)
+
+    args.pred_file_start = os.path.join(pred_dir, args.pred_file_start)
+    args.pred_file_end = os.path.join(pred_dir, args.pred_file_end)
 
     if not args.predict:
         args.pred_file_start = ""
@@ -161,11 +165,15 @@ def main(args):
     opt_dict = {"not_improved": 0, "prior_lr": args.prior_lr, "best_score": 0, "proj_lr": args.proj_lr}
 
     if args.prior_opt == "adam":
-        prior_optimizer = torch.optim.Adam(model.prior_group, lr=args.prior_lr, weight_decay=.1)
+        prior_optimizer = torch.optim.Adam(model.prior_group, lr=args.prior_lr)
     elif args.prior_opt == "sgd":
         prior_optimizer = torch.optim.SGD(model.prior_group, lr=args.prior_lr)
+    elif args.prior_opt == "adabound":
+        prior_optimizer = adabound.AdaBound(model.prior_group, lr=args.prior_lr)
     elif args.prior_opt == "lbfgs":
         optimizer = torch.optim.LBFGS(model.prior_group, lr=args.prior_lr)
+    elif args.prior_opt == "rmsprop":
+        prior_optimizer = torch.optim.RMSprop(model.prior_group, lr=args.prior_lr)
     else:
         raise ValueError("{} is not supported".format(args.prior_opt))
 
@@ -173,8 +181,12 @@ def main(args):
         proj_optimizer = torch.optim.Adam(model.proj_group, lr=args.proj_lr)
     elif args.proj_opt == "sgd":
         proj_optimizer = torch.optim.SGD(model.proj_group, lr=args.proj_lr)
+    elif args.proj_opt == "adabound":
+        proj_optimizer = adabound.AdaBound(model.proj_group, lr=args.proj_lr)
     elif args.proj_opt == "lbfgs":
         proj_optimizer = torch.optim.LBFGS(model.proj_group, lr=args.proj_lr)
+    elif args.proj_opt == "rmsprop":
+        proj_optimizer = torch.optim.RMSprop(model.proj_group, lr=args.proj_lr)
     else:
         raise ValueError("{} is not supported".format(args.proj_opt))
 
@@ -202,7 +214,7 @@ def main(args):
             model.set_dmv_params(train_data)
 
     with torch.no_grad():
-        acc_test = model.test(test_data, predict=args.pred_file_end)
+        acc_test = model.test(test_data, predict=args.pred_file_start)
         print('\nSTARTING TEST: *****acc {}*****\n'.format(acc_test))
 
     if args.up_em:
@@ -316,7 +328,7 @@ def main(args):
                 avg_ll_loss.backward()
 
                 torch.nn.utils.clip_grad_norm_(model.proj_group, 5.0)
-                torch.nn.utils.clip_grad_norm_(model.prior_group, 5.0)
+                # torch.nn.utils.clip_grad_norm_(model.prior_group, 5.0)
                 # torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
                 proj_optimizer.step()
 
@@ -391,6 +403,13 @@ def main(args):
         #     torch.save(model.state_dict(), args.save_path)
 
         torch.save(model.state_dict(), args.save_path)
+
+        opt_dict["prior_lr"] = opt_dict["prior_lr"] * lr_decay
+        opt_dict["proj_lr"] = opt_dict["proj_lr"] * lr_decay
+        print("new prior lr decay: {}".format(opt_dict["prior_lr"]))
+        print("new proj lr decay: {}".format(opt_dict["proj_lr"]))
+        prior_optimizer = torch.optim.Adam(model.prior_group, lr=opt_dict["prior_lr"])
+        proj_optimizer = torch.optim.Adam(model.proj_group, lr=opt_dict["proj_lr"])
 
     with torch.no_grad():
         # acc = model.test(train_data)

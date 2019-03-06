@@ -141,6 +141,14 @@ class DMVFlow(nn.Module):
             self.stop_right_init = self.stop_right.clone()
             self.root_attach_left_init = self.root_attach_left.clone()
 
+            # tmp = 0.001
+            tmp = 1.
+            self.attach_left.mul_(tmp)
+            self.attach_right.mul_(tmp)
+            self.root_attach_left.mul_(tmp)
+            self.stop_right.mul_(tmp)
+            self.stop_left.mul_(tmp)
+
             self.means_init = self.means.clone()
             self.proj_init = [param.clone() for param in self.proj_layer.parameters()]
 
@@ -407,7 +415,7 @@ class DMVFlow(nn.Module):
 
         return dir_acu
 
-    def predict(fout, iter_obj, parse, id_to_pos):
+    def predict(self, fout, iter_obj, parse, id_to_pos):
         for pos_s, gold_s, parse_s, deprel_s, len_ in zip(iter_obj.pos.transpose(0, 1),
                 iter_obj.head.transpose(0, 1), parse, iter_obj.deps, iter_obj.mask.sum(dim=0)):
             for i in range(int(len_)):
@@ -418,7 +426,7 @@ class DMVFlow(nn.Module):
 
                 fout.write("{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n".format(
                     i+1, "_", "_", pos, "_", "_", head+1, deprel, "_", tuple_[1]+1))
-
+            fout.write("\n")
 
     def measures(self, pos_s, gold_s, parse_s, len_):
         # Helper for eval().
