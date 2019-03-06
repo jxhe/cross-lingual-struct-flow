@@ -3,7 +3,7 @@ import torch
 from collections import defaultdict, namedtuple
 from conllu import parse_incr, parse_tree_incr
 
-IterObj = namedtuple("iter_object", ["embed", "pos", "head", "r_deps", "l_deps", "mask"])
+IterObj = namedtuple("iter_object", ["embed", "pos", "head", "r_deps", "l_deps", "mask", "deps"])
 
 class ConlluData(object):
     """docstring for ConlluData"""
@@ -24,6 +24,7 @@ class ConlluData(object):
         heads = []
         right_num_deps = []
         left_num_deps = []
+        deps = []
         fin = open(fname, "r", encoding="utf-8")
         fin_tree = open(fname, "r", encoding="utf-8")
         data_file_tree = parse_tree_incr(fin_tree)
@@ -35,6 +36,7 @@ class ConlluData(object):
             right_num_deps_ = []
             left_num_deps_ = []
             sent_n = []
+            deps_list = []
 
             # delete multi-word token
             for token in sent:
@@ -47,6 +49,7 @@ class ConlluData(object):
                 tag_list.append(pos_id)
                 # -1 represents root
                 head_list.append(token["head"]-1)
+                deps_list.append(token["deprel"])
 
             if len(tag_list) > max_len:
                 continue
@@ -69,11 +72,13 @@ class ConlluData(object):
             right_num_deps.append(right_num_deps_)
             left_num_deps.append(left_num_deps_)
             trees.append(tree)
+            deps.append(deps_list)
 
         self.trees = trees
         self.text = text
         self.postags = tags
         self.heads = heads
+        self.deps = deps
         self.right_num_deps = right_num_deps
         self.left_num_deps = left_num_deps
         self.pos_to_id = pos_to_id
@@ -91,7 +96,7 @@ class ConlluData(object):
     def text_to_embed(self, embedding):
         self.embed = []
         for sent in self.text:
-            sample = [embedding[word] for word in sent]
+            sample = [embedding[word] if word in embedding else np.zeros(embedding.n_dim) for word in sent]
             self.embed.append(sample)
 
     def input_transpose(self, embed, pos, head, r_deps, l_deps):
@@ -161,8 +166,51 @@ class ConlluData(object):
             batch_head = [batch_head[x] for x in sort_index]
             batch_right_num_deps = [batch_right_num_deps[x] for x in sort_index]
             batch_left_num_deps = [batch_left_num_deps[x] for x in sort_index]
+            batch_deps = [self.deps[x] for x in sort_index]
 
             embed_t, pos_t, head_t, r_deps_t, l_deps_t, masks_t = self.to_input_tensor(
                 batch_embed, batch_pos, batch_head, batch_right_num_deps, batch_left_num_deps)
 
-            yield IterObj(embed_t, pos_t, head_t, r_deps_t, l_deps_t, masks_t)
+            yield IterObj(embed_t, pos_t, head_t, r_deps_t, l_deps_t, masks_t, batch_deps)
+
+    def data_iter_efficient(self, mem_limit=250):
+        """This function batches similar-length sentences together,
+        with a memory limit that satisfies batch_size x length <= mem_limit.
+        Such batching is only used in test to accelarate evaluation
+        """
+
+        sents_len = np.array([len(sent) for sent in self.postags])
+        sort_idx = np.argsort(sents_len)
+        sort_len = sents_len[sort_idx]
+
+        curr = 0
+        while curr < len(sort_len):
+            batch_data = []
+            mem = 0
+            next_ = curr
+            mem = 0
+            cnt = 0
+            while next_ < len(sort_len):
+                cnt += 1
+                mem = cnt * sort_len[next_]
+                if mem > mem_limit:
+                    break
+                next_ += 1
+
+            index_ = [sort_idx[x] for x in range(curr, next_)]
+            index_ = index_[::-1]
+
+            curr = next_
+
+            batch_embed = [self.embed[x] for x in index_]
+            batch_pos = [self.postags[x] for x in index_]
+            batch_head = [self.heads[x] for x in index_]
+            batch_right_num_deps = [self.right_num_deps[x] for x in index_]
+            batch_left_num_deps = [self.left_num_deps[x] for x in index_]
+            batch_deps = [self.deps[x] for x in index_]
+
+            embed_t, pos_t, head_t, r_deps_t, l_deps_t, masks_t = self.to_input_tensor(
+                batch_embed, batch_pos, batch_head, batch_right_num_deps, batch_left_num_deps)
+
+            yield IterObj(embed_t, pos_t, head_t, r_deps_t, l_deps_t, masks_t, batch_deps)
+

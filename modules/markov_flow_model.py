@@ -38,32 +38,46 @@ class MarkovFlow(nn.Module):
         self.couple_layers = args.couple_layers
         self.cell_layers = args.cell_layers
         self.hidden_units = num_dims // 2
+        self.lstm_hidden_units = self.num_dims
 
         # transition parameters in log space
         self.tparams = Parameter(
             torch.Tensor(self.num_state, self.num_state))
+
+        self.prior_group = [self.tparams]
 
         # Gaussian means
         self.means = Parameter(torch.Tensor(self.num_state, self.num_dims))
 
         if args.mode == "unsupervised" and args.freeze_prior:
             self.tparams.requires_grad = False
-            self.means.requires_grad = False
 
         if args.mode == "unsupervised" and args.freeze_mean:
             self.means.requires_grad = False
 
         if args.model == 'nice':
-            self.nice_layer = NICETrans(self.couple_layers,
+            self.proj_layer = NICETrans(self.couple_layers,
                                         self.cell_layers,
                                         self.hidden_units,
                                         self.num_dims,
                                         self.device)
+        elif args.model == "lstmnice":
+            self.proj_layer = LSTMNICE(self.args.lstm_layers,
+                                       self.args.couple_layers,
+                                       self.args.cell_layers,
+                                       self.lstm_hidden_units,
+                                       self.hidden_units,
+                                       self.num_dims,
+                                       self.device)
 
         if args.mode == "unsupervised" and args.freeze_proj:
-            for param in self.nice_layer.parameters():
+            for param in self.proj_layer.parameters():
                 param.requires_grad = False
 
+        if args.model == "gaussian":
+            self.proj_group = [self.means, self.var]
+        else:
+            self.proj_group = list(self.proj_layer.parameters()) + [self.means, self.var]
 
         # prior
         self.pi = torch.zeros(self.num_state,
@@ -73,7 +87,7 @@ class MarkovFlow(nn.Module):
 
         self.pi = torch.log(self.pi)
 
-    def init_params(self, init_seed):
+    def init_params(self, train_data):
         """
         init_seed:(sents, masks)
         sents: (seq_length, batch_size, features)
@@ -87,11 +101,17 @@ class MarkovFlow(nn.Module):
 
         # load pretrained model
         if self.args.load_nice != '':
-            self.load_state_dict(torch.load(self.args.load_nice), strict=False)
+            self.load_state_dict(torch.load(self.args.load_nice), strict=True)
 
             self.means_init = self.means.clone()
             self.tparams_init = self.tparams.clone()
-            self.proj_init = [param.clone() for param in self.nice_layer.parameters()]
+            self.proj_init = [param.clone() for param in self.proj_layer.parameters()]
+
+            if self.args.init_var:
+                self.init_var(train_data)
+
+            if self.args.init_var_one:
+                self.var.fill_(0.01)
 
             # self.means_init.requires_grad = False
             # self.tparams_init.requires_grad = False
@@ -105,24 +125,84 @@ class MarkovFlow(nn.Module):
             self.load_state_dict(torch.load(self.args.load_gaussian), strict=False)
 
         # initialize mean and variance with empirical values
-        with torch.no_grad():
-            sents, tags, masks = init_seed
-            sents, _ = self.transform(sents)
+        # with torch.no_grad():
+        #     sents, tags, masks = init_seed
+        #     sents, _ = self.transform(sents, masks)
+        #     seq_length, _, features = sents.size()
+        #     flat_sents = sents.view(-1, features)
+        #     seed_mean = torch.sum(masks.view(-1, 1).expand_as(flat_sents) *
+        #                           flat_sents, dim=0) / masks.sum()
+        #     seed_var = torch.sum(masks.view(-1, 1).expand_as(flat_sents) *
+        #                          ((flat_sents - seed_mean.expand_as(flat_sents)) ** 2),
+        #                          dim = 0) / masks.sum()
+        #     self.var.copy_(seed_var)
+
+        #     # add noise to the pretrained Gaussian mean
+        #     if self.args.load_gaussian != '' and self.args.model == 'nice':
+        #         self.means.data.add_(seed_mean.data.expand_as(self.means.data))
+        #     elif self.args.load_gaussian == '' and self.args.load_nice == '':
+        #         self.means.data.normal_().mul_(0.04)
+        #         self.means.data.add_(seed_mean.data.expand_as(self.means.data))
+
+        #     if self.args.init_var_one:
+        #         self.var.fill_(1.0)
+
+        self.init_mean(train_data)
+        self.var.fill_(0.1)
+        self.init_var(train_data)
+
+        if self.args.init_var_one:
+            self.var.fill_(1.0)
+
+    def init_mean(self, train_data):
+        emb_dict = {}
+        cnt_dict = Counter()
+        for iter_obj in train_data.data_iter(self.args.batch_size):
+            sents_t = iter_obj.embed
+            sents_t, _ = self.transform(sents_t, iter_obj.mask)
+            sents_t = sents_t.transpose(0, 1)
+            pos_t = iter_obj.pos.transpose(0, 1)
+            mask_t = iter_obj.mask.transpose(0, 1)
+
+
+            for emb_s, tagid_s, mask_s in zip(sents_t, pos_t, mask_t):
+                for tagid, emb, mask in zip(tagid_s, emb_s, mask_s):
+                    tagid = tagid.item()
+                    mask = mask.item()
+                    if tagid in emb_dict:
+                        emb_dict[tagid] = emb_dict[tagid] + emb * mask
+                    else:
+                        emb_dict[tagid] = emb * mask
+
+                    cnt_dict[tagid] += mask
+
+        for tagid in emb_dict:
+            self.means[tagid] = emb_dict[tagid] / cnt_dict[tagid]
+
+    def init_var(self, train_data):
+        cnt = 0
+        mean_sum = 0.
+        var_sum = 0.
+        for iter_obj in train_data.data_iter(batch_size=self.args.batch_size):
+            sents, masks = iter_obj.embed, iter_obj.mask
+            sents, _ = self.transform(sents, masks)
             seq_length, _, features = sents.size()
             flat_sents = sents.view(-1, features)
-            seed_mean = torch.sum(masks.view(-1, 1).expand_as(flat_sents) *
-                                  flat_sents, dim=0) / masks.sum()
-            seed_var = torch.sum(masks.view(-1, 1).expand_as(flat_sents) *
-                                 ((flat_sents - seed_mean.expand_as(flat_sents)) ** 2),
-                                 dim = 0) / masks.sum()
-            self.var.copy_(seed_var)
+            mean_sum = mean_sum + torch.sum(masks.view(-1, 1).expand_as(flat_sents) *
+                flat_sents, dim=0)
+            cnt += masks.sum().item()
 
-            # add noise to the pretrained Gaussian mean
-            if self.args.load_gaussian != '' and self.args.model == 'nice':
-                self.means.data.add_(seed_mean.data.expand_as(self.means.data))
-            elif self.args.load_gaussian == '' and self.args.load_nice == '':
-                self.means.data.normal_().mul_(0.04)
-                self.means.data.add_(seed_mean.data.expand_as(self.means.data))
+        mean = mean_sum / cnt
+
+        for iter_obj in train_data.data_iter(batch_size=self.args.batch_size):
+            sents, masks = iter_obj.embed, iter_obj.mask
+            sents, _ = self.transform(sents, masks)
+            seq_length, _, features = sents.size()
+            flat_sents = sents.view(-1, features)
+            var_sum = var_sum + torch.sum(masks.view(-1, 1).expand_as(flat_sents) *
+                                 ((flat_sents - mean.expand_as(flat_sents)) ** 2), dim = 0)
+        var = var_sum / cnt
+        self.var.copy_(var)
 
     def _calc_log_density_c(self):
         # return -self.num_dims/2.0 * (math.log(2) + \
@@ -131,15 +211,15 @@ class MarkovFlow(nn.Module):
         return -self.num_dims/2.0 * (math.log(2) + \
                 math.log(np.pi)) - 0.5 * torch.sum(torch.log(self.var))
 
-    def transform(self, x):
+    def transform(self, x, masks=None):
         """
         Args:
             x: (sent_length, batch_size, num_dims)
         """
         jacobian_loss = torch.zeros(1, device=self.device, requires_grad=False)
 
-        if self.args.model == 'nice':
-            x, jacobian_loss_new = self.nice_layer(x)
+        if self.args.model != 'gaussian':
+            x, jacobian_loss_new = self.proj_layer(x, masks)
             jacobian_loss = jacobian_loss + jacobian_loss_new
 
 
@@ -147,14 +227,18 @@ class MarkovFlow(nn.Module):
 
     def MLE_loss(self):
         # diff1 = ((self.means - self.means_init) ** 2).sum()
-        diff2 = ((self.tparams - self.tparams_init) ** 2).sum()
+        diff_prior = ((self.tparams - self.tparams_init) ** 2).sum()
 
         # diff = diff1 + diff2
+        diff_proj = 0.
 
-        # for i, param in enumerate(self.nice_layer.parameters()):
-        #     diff = diff + ((self.proj_init[i] - param) ** 2).sum()
+        for i, param in enumerate(self.proj_layer.parameters()):
+            diff_proj = diff_proj + ((self.proj_init[i] - param) ** 2).sum()
 
-        return 0.5 * self.args.beta * diff2
+        diff_mean = ((self.means_init - self.means) ** 2).sum()
+
+        return 0.5 * (self.args.beta_prior * diff_prior +
+                self.args.beta_proj * diff_proj + self.args.beta_mean * diff_mean)
 
     def unsupervised_loss(self, sents, masks):
         """
@@ -169,7 +253,7 @@ class MarkovFlow(nn.Module):
 
         """
         max_length, batch_size, _ = sents.size()
-        sents, jacobian_loss = self.transform(sents)
+        sents, jacobian_loss = self.transform(sents, masks)
 
         assert self.var.data.min() > 0
 
@@ -206,7 +290,7 @@ class MarkovFlow(nn.Module):
         sent_len, batch_size, _ = sents.size()
 
         # (sent_length, batch_size, num_dims)
-        sents, jacobian_loss = self.transform(sents)
+        sents, jacobian_loss = self.transform(sents, masks)
 
         # ()
         log_density_c = self._calc_log_density_c()
@@ -223,8 +307,9 @@ class MarkovFlow(nn.Module):
 
         var = self.var.view(1, 1, self.num_dims)
 
+
         # (sent_len, batch_size)
-        log_emission_prob = self.log_density_c - \
+        log_emission_prob = log_density_c - \
                        0.5 * torch.sum((means-sents) ** 2 / var, dim=-1)
 
         log_emission_prob = torch.mul(masks, log_emission_prob).sum()
@@ -395,55 +480,45 @@ class MarkovFlow(nn.Module):
         return torch.cat(assign_all, dim=1)
 
     def test_supervised(self,
-                        test_data,
-                        test_tags):
+                        test_data):
         """Evaluate tagging performance with
         token-level supervised accuracy
 
         Args:
-            test_data: nested list of sentences
-            test_tags: nested list of gold tag ids
+            test_data: ConlluData object
 
         Returns: a scalar accuracy value
 
         """
-
-        pad = np.zeros(self.num_dims)
-
         total = 0.0
         correct = 0.0
 
         index_all = []
         eval_tags = []
 
-        for sents, tags in data_iter(list(zip(test_data, test_tags)),
-                                     batch_size=self.args.batch_size,
-                                     label=True,
-                                     shuffle=False):
-            total += sum(len(sent) for sent in sents)
-            sents_t, tags_t, masks = to_input_tensor(sents,
-                                                     tags,
-                                                     pad,
-                                                     device=self.device)
-            sents_t, _ = self.transform(sents_t)
+        for iter_obj in test_data.data_iter(batch_size=self.args.batch_size,
+                                            shuffle=False):
+            sents_t = iter_obj.embed
+            masks = iter_obj.mask
+            tags_t = iter_obj.pos
+
+            sents_t, _ = self.transform(sents_t, masks)
 
             # index: (batch_size, seq_length)
             index = self._viterbi(sents_t, masks)
 
-            index_all += list(index)
-            eval_tags += tags
 
-        for (seq_gold_tags, seq_model_tags) in zip(eval_tags, index_all):
-            for (gold_tag, model_tag) in zip(seq_gold_tags, seq_model_tags):
-                if model_tag == gold_tag:
-                    correct += 1
+            for index_s, tag_s, mask_s in zip(index, tags_t.transpose(0, 1), masks.transpose(0, 1)):
+                for i in range(int(mask_s.sum().item())):
+                    if index_s[i].item() == tag_s[i].item():
+                        correct += 1
+                    total += 1
 
         return correct / total
 
 
     def test_unsupervised(self,
                          test_data,
-                         test_tags,
                          sentences=None,
                          tagging=False,
                          path=None,
@@ -453,8 +528,7 @@ class MarkovFlow(nn.Module):
         accuracy
 
         Args:
-            test_data: nested list of sentences
-            test_tags: nested list of gold tags
+            test_data: ConlluData object
             tagging: output the predicted tags if True
             path: The output tag file path
             null_index: the null element location in Penn
@@ -466,7 +540,6 @@ class MarkovFlow(nn.Module):
 
         """
 
-        pad = np.zeros(self.num_dims)
 
         total = 0.0
         correct = 0.0
@@ -482,27 +555,28 @@ class MarkovFlow(nn.Module):
         for i in range(self.num_state):
             cnt_stats[i] = Counter()
 
-        for sents, tags in data_iter(list(zip(test_data, test_tags)),
-                                     batch_size=self.args.batch_size,
-                                     label=True,
-                                     shuffle=False):
-            total += sum(len(sent) for sent in sents)
-            sents_t, tags_t, masks = to_input_tensor(sents,
-                                                     tags,
-                                                     pad,
-                                                     device=self.device)
-            sents_t, _ = self.transform(sents_t)
+        for iter_obj in test_data.data_iter(batch_size=self.args.batch_size,
+                                            shuffle=False):
+            total += iter_obj.mask.sum().item()
+            sents_t = iter_obj.embed
+            tags_t = iter_obj.pos
+            masks = iter_obj.mask
+
+            sents_t, _ = self.transform(sents_t, masks)
 
             # index: (batch_size, seq_length)
             index = self._viterbi(sents_t, masks)
 
             index_all += list(index)
+
+            tags = [tags_t[:int(masks[:,i].sum().item()), i] for i in range(index.size(0))]
             eval_tags += tags
 
             # count
             for (seq_gold_tags, seq_model_tags) in zip(tags, index):
                 for (gold_tag, model_tag) in zip(seq_gold_tags, seq_model_tags):
                     model_tag = model_tag.item()
+                    gold_tag = gold_tag.item()
                     gold_vm += [gold_tag]
                     model_vm += [model_tag]
                     cnt_stats[model_tag][gold_tag] += 1
@@ -517,6 +591,8 @@ class MarkovFlow(nn.Module):
         for (seq_gold_tags, seq_model_tags) in zip(eval_tags, index_all):
             for (gold_tag, model_tag) in zip(seq_gold_tags, seq_model_tags):
                 model_tag = model_tag.item()
+                gold_tag = gold_tag.item()
+
                 if col_ind[gold_tag] == model_tag:
                     correct += 1
 
@@ -533,6 +609,7 @@ class MarkovFlow(nn.Module):
         for (seq_gold_tags, seq_model_tags) in zip(eval_tags, index_all):
             for (gold_tag, model_tag) in zip(seq_gold_tags, seq_model_tags):
                 model_tag = model_tag.item()
+                gold_tag = gold_tag.item()
                 if match_dict[model_tag] == gold_tag:
                     correct += 1
 

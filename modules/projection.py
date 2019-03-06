@@ -130,6 +130,13 @@ class LSTMNICE(nn.Module):
         # embedding of start symbol
         self.start_emb = nn.Parameter(torch.Tensor(n_emb).uniform_(-0.01, 0.01))
 
+    def reset_parameters(self):
+        for layer in self.couple_layers:
+            layer.reset_parameters()
+
+        self.lstm.reset_parameters()
+        self.start_emb.uniform_(-0.01, 0.01)
+
     def forward(self, input, masks=None):
         """
         input: (seq_length, batch_size, features)
