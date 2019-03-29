@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+import h5py
 from collections import defaultdict, namedtuple
 from conllu import parse_incr, parse_tree_incr
 
@@ -96,9 +97,17 @@ class ConlluData(object):
 
     def text_to_embed(self, embedding):
         self.embed = []
-        for sent in self.text:
-            sample = [embedding[word] if word in embedding else np.zeros(embedding.n_dim) for word in sent]
-            self.embed.append(sample)
+
+        # fasttext embeddings
+        if type(embedding) is not str:
+            for sent in self.text:
+                sample = [embedding[word] if word in embedding else np.zeros(embedding.n_dim) for word in sent]
+                self.embed.append(sample)
+        # bert embeddings
+        else:
+            with h5py.File("embedding", "r") as fin:
+                for id_, sent in enumerate(self.text):
+                    self.embed.append(list(fin[str(id_)].value))
 
     def input_transpose(self, embed, pos, head, r_deps, l_deps):
         max_len = max(len(s) for s in pos)

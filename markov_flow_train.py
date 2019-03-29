@@ -29,6 +29,9 @@ def init_config():
                          choices=['supervised', 'unsupervised', 'both', 'eval'],
                          default='supervised')
 
+    # BERT
+    parser.add_argument('--bert_dir', type=str, default="", help='the bert embedding directory')
+
     # optimization params
     parser.add_argument('--opt', choices=['adam', 'sgd'], default='adam')
     parser.add_argument('--prior_lr', type=float, default=0.001)
@@ -61,6 +64,11 @@ def init_config():
 
     args = parser.parse_args()
     args.cuda = torch.cuda.is_available()
+
+    if args.bert_dir != "":
+        args.bert_train = os.path.join(args.bert_dir, args.lang, "{}_train.hdf5".format(args.lang))
+        args.bert_dev = os.path.join(args.bert_dir, args.lang, "{}_dev.hdf5".format(args.lang))
+        args.bert_test = os.path.join(args.bert_dir, args.lang, "{}_test.hdf5".format(args.lang))
 
     save_dir = "dump_models/markov"
 
@@ -97,18 +105,24 @@ def init_config():
 
 def main(args):
 
-    word_vec_dict = FastVector(vector_file=args.vec_file)
-    word_vec_dict.apply_transform(args.align_file)
-    print('complete loading word vectors')
+    if args.bert_dir == "":
+        word_vec_dict = FastVector(vector_file=args.vec_file)
+        word_vec_dict.apply_transform(args.align_file)
+        train_emb = val_emb = test_emb = word_vec_dict
+        print('complete loading word vectors')
+    else:
+        train_emb = args.bert_train
+        val_emb = args.bert_dev
+        test_emb = args.bert_test
 
     pos_to_id = read_tag_map("tag_map.txt")
     device = torch.device("cuda" if args.cuda else "cpu")
     args.device = device
-    train_data = ConlluData(args.train_file, word_vec_dict,
+    train_data = ConlluData(args.train_file, train_emb,
         device=device, pos_to_id_dict=pos_to_id)
-    val_data = ConlluData(args.val_file, word_vec_dict,
+    val_data = ConlluData(args.val_file, val_emb,
         device=device, pos_to_id_dict=pos_to_id)
-    test_data = ConlluData(args.test_file, word_vec_dict,
+    test_data = ConlluData(args.test_file, test_emb,
         device=device, pos_to_id_dict=pos_to_id)
 
 
