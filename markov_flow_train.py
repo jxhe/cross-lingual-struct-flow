@@ -80,7 +80,8 @@ def init_config():
     params = importlib.import_module(config_file).params_markov
     args = argparse.Namespace(**vars(args), **params)
 
-    id_ = "{}_{}_{}_{}_{}_{}_{}".format(args.lang, args.mode, args.model, args.couple_layers, args.cell_layers, args.jobid, args.taskid)
+    id_ = "{}_{}_{}_{}_{}_{}_{}_{}".format(args.lang, args.mode, args.model, args.bert_dir.strip("/"),
+            args.couple_layers, args.cell_layers, args.jobid, args.taskid)
     save_path = os.path.join(save_dir, id_ + '.pt')
     args.save_path = save_path
     print("model save path: ", save_path)

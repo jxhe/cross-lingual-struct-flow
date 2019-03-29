@@ -105,7 +105,7 @@ class ConlluData(object):
                 self.embed.append(sample)
         # bert embeddings
         else:
-            with h5py.File("embedding", "r") as fin:
+            with h5py.File(embedding, "r") as fin:
                 for id_, sent in enumerate(self.text):
                     self.embed.append(list(fin[str(id_)].value))
 

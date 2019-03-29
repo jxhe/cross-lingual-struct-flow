@@ -148,7 +148,7 @@ class MarkovFlow(nn.Module):
         #         self.var.fill_(1.0)
 
         self.init_mean(train_data)
-        self.var.fill_(0.1)
+        self.var.fill_(1.0)
         self.init_var(train_data)
 
         if self.args.init_var_one:
