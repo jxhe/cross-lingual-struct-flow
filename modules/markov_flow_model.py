@@ -124,28 +124,30 @@ class MarkovFlow(nn.Module):
         if self.args.load_gaussian != '':
             self.load_state_dict(torch.load(self.args.load_gaussian), strict=False)
 
-        # initialize mean and variance with empirical values
-        # with torch.no_grad():
-        #     sents, tags, masks = init_seed
-        #     sents, _ = self.transform(sents, masks)
-        #     seq_length, _, features = sents.size()
-        #     flat_sents = sents.view(-1, features)
-        #     seed_mean = torch.sum(masks.view(-1, 1).expand_as(flat_sents) *
-        #                           flat_sents, dim=0) / masks.sum()
-        #     seed_var = torch.sum(masks.view(-1, 1).expand_as(flat_sents) *
-        #                          ((flat_sents - seed_mean.expand_as(flat_sents)) ** 2),
-        #                          dim = 0) / masks.sum()
-        #     self.var.copy_(seed_var)
+        # fully unsupervised training
+        if self.args.mode == "unsupervised" and self.args.load_nice == "":
+            with torch.no_grad():
+                for iter_obj in train_data.data_iter(self.args.batch_size):
+                    sents_t = iter_obj.embed
+                    masks = iter_obj.mask
+                    sents_t, _ = self.transform(sents_t, iter_obj.mask)
+                    seq_length, _, features = sents.size()
+                    flat_sents = sents.view(-1, features)
+                    seed_mean = torch.sum(masks.view(-1, 1).expand_as(flat_sents) *
+                                          flat_sents, dim=0) / masks.sum()
+                    seed_var = torch.sum(masks.view(-1, 1).expand_as(flat_sents) *
+                                         ((flat_sents - seed_mean.expand_as(flat_sents)) ** 2),
+                                         dim = 0) / masks.sum()
+                    self.var.copy_(seed_var)
 
-        #     # add noise to the pretrained Gaussian mean
-        #     if self.args.load_gaussian != '' and self.args.model == 'nice':
-        #         self.means.data.add_(seed_mean.data.expand_as(self.means.data))
-        #     elif self.args.load_gaussian == '' and self.args.load_nice == '':
-        #         self.means.data.normal_().mul_(0.04)
-        #         self.means.data.add_(seed_mean.data.expand_as(self.means.data))
+                    # add noise to the pretrained Gaussian mean
+                    if self.args.load_gaussian != '' and self.args.model == 'nice':
+                        self.means.data.add_(seed_mean.data.expand_as(self.means.data))
+                    elif self.args.load_gaussian == '' and self.args.load_nice == '':
+                        self.means.data.normal_().mul_(0.04)
+                        self.means.data.add_(seed_mean.data.expand_as(self.means.data))
 
-        #     if self.args.init_var_one:
-        #         self.var.fill_(1.0)
+                    return
 
         self.init_mean(train_data)
         self.var.fill_(1.0)
