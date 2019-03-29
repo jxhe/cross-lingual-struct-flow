@@ -7,7 +7,7 @@ IterObj = namedtuple("iter_object", ["embed", "pos", "head", "r_deps", "l_deps",
 
 class ConlluData(object):
     """docstring for ConlluData"""
-    def __init__(self, fname, embed, device,
+    def __init__(self, fname, embed=None, device=None,
                  max_len=1e3, pos_to_id_dict=None,
                  read_tree=False):
         super(ConlluData, self).__init__()
@@ -85,7 +85,8 @@ class ConlluData(object):
         self.id_to_pos = {v:k for (k, v) in pos_to_id.items()}
         self.length = len(self.text)
 
-        self.text_to_embed(embed)
+        if embed is not None:
+            self.text_to_embed(embed)
 
         fin.close()
         fin_tree.close()
