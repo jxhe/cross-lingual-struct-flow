@@ -116,7 +116,10 @@ def main(args):
         val_emb = args.bert_dev
         test_emb = args.bert_test
 
-    pos_to_id = read_tag_map("tag_map.txt")
+    if args.lang != "ptb":
+        pos_to_id = read_tag_map("tag_map.txt")
+    else:
+        pos_to_id = defaultdict(lambda: len(pos_to_id))
     device = torch.device("cuda" if args.cuda else "cpu")
     args.device = device
     train_data = ConlluData(args.train_file, train_emb,
@@ -251,7 +254,7 @@ def main(args):
             if args.mode != "unsupervised":
                 # torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
                 torch.nn.utils.clip_grad_norm_(model.proj_layer.parameters(), 5.0)
-            else:
+            elif args.load_nice == "":
                 torch.nn.utils.clip_grad_norm_(model.proj_group, 5.0)
                 # torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
 

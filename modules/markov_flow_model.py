@@ -13,6 +13,7 @@ from torch.nn import Parameter
 from torch.nn.utils.rnn import pad_packed_sequence, pack_padded_sequence
 from sklearn.metrics.cluster import v_measure_score
 from scipy.optimize import linear_sum_assignment
+from collections import defaultdict
 
 from .utils import log_sum_exp, data_iter, to_input_tensor, \
                    write_conll
@@ -128,9 +129,9 @@ class MarkovFlow(nn.Module):
         if self.args.mode == "unsupervised" and self.args.load_nice == "":
             with torch.no_grad():
                 for iter_obj in train_data.data_iter(self.args.batch_size):
-                    sents_t = iter_obj.embed
+                    sents = iter_obj.embed
                     masks = iter_obj.mask
-                    sents_t, _ = self.transform(sents_t, iter_obj.mask)
+                    sents, _ = self.transform(sents, iter_obj.mask)
                     seq_length, _, features = sents.size()
                     flat_sents = sents.view(-1, features)
                     seed_mean = torch.sum(masks.view(-1, 1).expand_as(flat_sents) *
@@ -139,6 +140,7 @@ class MarkovFlow(nn.Module):
                                          ((flat_sents - seed_mean.expand_as(flat_sents)) ** 2),
                                          dim = 0) / masks.sum()
                     self.var.copy_(seed_var)
+                    # self.var.fill_(0.02)
 
                     # add noise to the pretrained Gaussian mean
                     if self.args.load_gaussian != '' and self.args.model == 'nice':
