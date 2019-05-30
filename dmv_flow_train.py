@@ -13,6 +13,7 @@ import numpy as np
 from modules import *
 
 from multilingual_trans.fasttext import FastVector
+from logger import Logger
 
 lr_decay = 0.5
 
@@ -28,6 +29,9 @@ def init_config():
     parser.add_argument('--mode',
                          choices=['supervised_wpos', 'supervised_wopos', 'unsupervised', 'both', 'eval'],
                          default='supervised')
+
+    # BERT
+    parser.add_argument('--bert_dir', type=str, default="", help='the bert embedding directory')
 
     # optimization params
     parser.add_argument('--proj_opt', choices=['adam', 'sgd'], default='adam')
@@ -72,14 +76,27 @@ def init_config():
     args = parser.parse_args()
     args.cuda = torch.cuda.is_available()
 
+    if args.bert_dir != "":
+        args.bert_train = os.path.join(args.bert_dir, args.lang, "{}_train.hdf5".format(args.lang))
+        args.bert_dev = os.path.join(args.bert_dir, args.lang, "{}_dev.hdf5".format(args.lang))
+        args.bert_test = os.path.join(args.bert_dir, args.lang, "{}_test.hdf5".format(args.lang))
+
     save_dir = "dump_models/dmv"
+    log_dir = "logs/dmv"
 
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
 
-    id_ = "{}_{}_{}_{}_{}".format(args.lang, args.mode, args.model, args.jobid, args.taskid)
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+
+    em_str = "_em" if args.em_train else ""
+
+    id_ = "{}_{}_{}_{}_posemb{}_{}_{}{}".format(args.lang, args.mode, args.model, args.bert_dir.strip("/"), 
+        args.pos_emb_dim, args.jobid, args.taskid, em_str)
     save_path = os.path.join(save_dir, id_ + '.pt')
     args.save_path = save_path
+    args.log_path = os.path.join(log_dir, id_ + ".log")
 
     print("model save path: ", save_path)
 
@@ -116,9 +133,15 @@ def init_config():
 
 def main(args):
 
-    word_vec_dict = FastVector(vector_file=args.vec_file)
-    word_vec_dict.apply_transform(args.align_file)
-    print('complete loading word vectors')
+    if args.bert_dir == "":
+        word_vec_dict = FastVector(vector_file=args.vec_file)
+        word_vec_dict.apply_transform(args.align_file)
+        train_emb = val_emb = test_emb = word_vec_dict
+        print('complete loading word vectors')
+    else:
+        train_emb = args.bert_train
+        val_emb = args.bert_dev
+        test_emb = args.bert_test
 
     device = torch.device("cuda" if args.cuda else "cpu")
     args.device = device
@@ -130,13 +153,13 @@ def main(args):
 
     pos_to_id = read_tag_map("tag_map.txt")
 
-    train_data = ConlluData(args.train_file, word_vec_dict,
+    train_data = ConlluData(args.train_file, train_emb,
             max_len=train_max_len, device=device, pos_to_id_dict=pos_to_id,
             read_tree=(args.mode == "supervised_wopos"))
 
-    val_data = ConlluData(args.val_file, word_vec_dict,
+    val_data = ConlluData(args.val_file, val_emb,
             max_len=args.max_len, device=device, pos_to_id_dict=pos_to_id)
-    test_data = ConlluData(args.test_file, word_vec_dict,
+    test_data = ConlluData(args.test_file, test_emb,
             max_len=args.max_len, device=device, pos_to_id_dict=pos_to_id)
 
     num_dims = len(train_data.embed[0][0])
@@ -149,9 +172,11 @@ def main(args):
     print("#test sentences: {}".format(test_data.length))
 
     exclude_pos = [pos_to_id["PUNCT"], pos_to_id["SYM"]]
-    model = DMVFlow(args, len(pos_to_id),
-        num_dims, exclude_pos, word_vec_dict).to(device)
+    # model = DMVFlow(args, len(pos_to_id),
+    #     num_dims, exclude_pos, word_vec_dict).to(device)
 
+    model = DMVFlow(args, len(pos_to_id),
+        num_dims, exclude_pos).to(device)
     init_seed = next(train_data.data_iter(args.batch_size))
 
     with torch.no_grad():
@@ -403,4 +428,6 @@ def main(args):
 
 if __name__ == '__main__':
     parse_args = init_config()
+    if parse_args.mode != "eval":
+        sys.stdout = Logger(parse_args.log_path)
     main(parse_args)

@@ -54,7 +54,7 @@ class DMVFlow(nn.Module):
         self.lstm_hidden_units = self.num_dims
 
         self.punc_sym = punc_sym
-        self.word2vec = word_vec_dict
+        # self.word2vec = word_vec_dict
 
         self.harmonic = False
 
@@ -194,8 +194,14 @@ class DMVFlow(nn.Module):
                              dim=0) / masks.sum()
 
         # self.var.copy_(2 * seed_var)
-        self.init_mean(train_data)
-        self.init_var(train_data)
+        if self.args.pos_emb_dim > 0:
+            self.init_mean(train_data)
+            self.init_var(train_data)
+        else:
+            self.var.copy_(seed_var)
+            self.var.fill_(1.)
+            self.means.data.normal_().mul_(0.04)
+            self.means.data.add_(seed_mean.data.expand_as(self.means.data))
 
     def init_mean(self, train_data):
         emb_dict = {}

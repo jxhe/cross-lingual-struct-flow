@@ -23,6 +23,7 @@ class ConlluData(object):
         tags = []
         trees = []
         heads = []
+        embedding = []
         right_num_deps = []
         left_num_deps = []
         deps = []
@@ -30,7 +31,7 @@ class ConlluData(object):
         fin_tree = open(fname, "r", encoding="utf-8")
         data_file_tree = parse_tree_incr(fin_tree)
         data_file = parse_incr(fin)
-        for sent, tree in zip(data_file, data_file_tree):
+        for id_, (sent, tree) in enumerate(zip(data_file, data_file_tree)):
             sent_list = []
             tag_list = []
             head_list = []
@@ -68,6 +69,7 @@ class ConlluData(object):
                         raise ValueError("head is itself !")
 
             text.append(sent_list)
+            embedding.append(self.text_to_embed(id_, sent_list, embed))
             tags.append(tag_list)
             heads.append(head_list)
             right_num_deps.append(right_num_deps_)
@@ -77,6 +79,7 @@ class ConlluData(object):
 
         self.trees = trees
         self.text = text
+        self.embed = embedding
         self.postags = tags
         self.heads = heads
         self.deps = deps
@@ -86,8 +89,8 @@ class ConlluData(object):
         self.id_to_pos = {v:k for (k, v) in pos_to_id.items()}
         self.length = len(self.text)
 
-        if embed is not None:
-            self.text_to_embed(embed)
+        # if embed is not None:
+        #     self.text_to_embed(embed)
 
         fin.close()
         fin_tree.close()
@@ -95,19 +98,18 @@ class ConlluData(object):
     def __len__(self):
         return self.length
 
-    def text_to_embed(self, embedding):
-        self.embed = []
+    def text_to_embed(self, id_, sent, embedding):
 
         # fasttext embeddings
         if type(embedding) is not str:
-            for sent in self.text:
-                sample = [embedding[word] if word in embedding else np.zeros(embedding.n_dim) for word in sent]
-                self.embed.append(sample)
+            sample = [embedding[word] if word in embedding else np.zeros(embedding.n_dim) for word in sent]
+            return sample
         # bert embeddings
         else:
             with h5py.File(embedding, "r") as fin:
-                for id_, sent in enumerate(self.text):
-                    self.embed.append(list(fin[str(id_)].value))
+                sent_emb = list(fin[str(id_)].value)
+                return sent_emb[:len(sent)]
+                # assert(len(sent) == len(sent_emb))
 
     def input_transpose(self, embed, pos, head, r_deps, l_deps):
         max_len = max(len(s) for s in pos)
