@@ -92,7 +92,7 @@ def init_config():
 
     em_str = "_em" if args.em_train else ""
 
-    id_ = "{}_{}_{}_{}_posemb{}_{}_{}{}".format(args.lang, args.mode, args.model, args.bert_dir.strip("/"), 
+    id_ = "{}_{}_{}_{}_posemb{}_{}_{}{}".format(args.lang, args.mode, args.model, args.bert_dir.strip("/"),
         args.pos_emb_dim, args.jobid, args.taskid, em_str)
     save_path = os.path.join(save_dir, id_ + '.pt')
     args.save_path = save_path
@@ -186,7 +186,8 @@ def main(args):
     opt_dict = {"not_improved": 0, "prior_lr": args.prior_lr, "best_score": 0, "proj_lr": args.proj_lr}
 
     if args.prior_opt == "adam":
-        prior_optimizer = torch.optim.Adam(model.prior_group, lr=args.prior_lr, weight_decay=.1)
+        # prior_optimizer = torch.optim.Adam(model.prior_group, lr=args.prior_lr, weight_decay=.1)
+        prior_optimizer = torch.optim.Adam(model.prior_group, lr=args.prior_lr)
     elif args.prior_opt == "sgd":
         prior_optimizer = torch.optim.SGD(model.prior_group, lr=args.prior_lr)
     elif args.prior_opt == "lbfgs":
