@@ -18,7 +18,7 @@ params_dmv={
     "cell_layers": 1,
     "valid_nepoch": 1,
     "lstm_layers": 2,
-    "epochs": 5,
+    "epochs": 10,
     "batch_size": 16,
     "emb_dir": "fastText_data",
     "train_file": "ud-treebanks-v2.2/UD_Japanese-GSD/ja_gsd-ud-train.conllu",

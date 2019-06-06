@@ -20,7 +20,7 @@ CUDA_VISIBLE_DEVICES=$1 python -u dmv_flow_train.py \
         --freeze_pos_emb \
         --bert_dir bert-base-multilingual-cased \
         --load_nice ./dump_models/dmv/en_supervised_wopos_nice_bert-base-multilingual-cased_posemb300_0_0_em.pt \
-        --beta_prior 0.1 \
+        --beta_prior 0.03 \
         --beta_proj 0.1 \
         --beta_mean 0.1 \
         --taskid $3 > $4

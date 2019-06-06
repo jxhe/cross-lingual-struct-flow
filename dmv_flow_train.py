@@ -91,9 +91,12 @@ def init_config():
         os.makedirs(log_dir)
 
     em_str = "_em" if args.em_train else ""
+    freeze_mean_str = "_frmean" if args.freeze_mean else ""
+    freeze_proj_str = "_frproj" if args.freeze_proj else ""
+    freeze_prior_str = "_frprior" if args.freeze_prior else ""
 
-    id_ = "{}_{}_{}_{}_posemb{}_{}_{}{}".format(args.lang, args.mode, args.model, args.bert_dir.strip("/"), 
-        args.pos_emb_dim, args.jobid, args.taskid, em_str)
+    id_ = "{}_{}_{}_{}_posemb{}_bprior{}_bproj{}_bmean{}_{}_{}{}{}{}{}".format(args.lang, args.mode, args.model, args.bert_dir.strip("/"),
+        args.pos_emb_dim, args.beta_prior, args.beta_proj, args.beta_mean, args.jobid, args.taskid, em_str, freeze_mean_str, freeze_proj_str, freeze_prior_str)
     save_path = os.path.join(save_dir, id_ + '.pt')
     args.save_path = save_path
     args.log_path = os.path.join(log_dir, id_ + ".log")
@@ -296,7 +299,7 @@ def main(args):
 
                 if (cnt+1) % args.batch_size == 0:
                     torch.nn.utils.clip_grad_norm_(model.proj_group, 5.0)
-                    torch.nn.utils.clip_grad_norm_(model.prior_group, 5.0)
+                    # torch.nn.utils.clip_grad_norm_(model.prior_group, 5.0)
 
                     # if not args.em_train:
                     #     prior_optimizer.step()

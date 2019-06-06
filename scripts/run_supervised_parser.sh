@@ -15,5 +15,5 @@ python -u dmv_flow_train.py \
         --pos_emb_dim 300 \
         --em_train \
         --taskid $1 \
-        # --set_seed \
+        --set_seed \
 
