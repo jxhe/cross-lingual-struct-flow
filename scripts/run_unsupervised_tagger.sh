@@ -12,12 +12,11 @@ CUDA_VISIBLE_DEVICES=$1 python -u markov_flow_train.py \
         --model nice \
         --mode unsupervised \
         --set_seed \
-        --load_nice dump_models/markov/en_supervised_nice_bert-base-multilingual-cased_8_1_0_0.pt \
-        --bert_dir bert-base-multilingual-cased \
+        --load_nice outputs/tagging/en_supervised_nice_couple8_cell1_bprior0.0_bproj0.0_bmean0.0/model.pt \
+        --save_dir test_it \
         --beta_proj 80. \
         --beta_prior 0. \
+        --beta_mean 500. \
         --prior_lr 0.001 \
         --proj_lr 0.0001 \
-        --beta_mean 500. \
-        --taskid $3 > $4
-        # --freeze_mean \
+

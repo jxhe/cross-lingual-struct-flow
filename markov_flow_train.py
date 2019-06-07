@@ -17,7 +17,6 @@ from multilingual_trans.fasttext import FastVector
 lr_decay = 0.5
 
 def init_config():
-
     parser = argparse.ArgumentParser(description='POS tagging')
 
     # train and test data
@@ -26,8 +25,10 @@ def init_config():
     # model config
     parser.add_argument('--model', choices=['gaussian', 'nice', 'lstmnice'], default='gaussian')
     parser.add_argument('--mode',
-                         choices=['supervised', 'unsupervised', 'both', 'eval'],
+                         choices=['supervised', 'unsupervised', 'eval'],
                          default='supervised')
+    parser.add_argument('--save_dir', default="", 
+        help="output directory. If not empty, the argument outdir would overwrite the default output directory")
 
     # BERT
     parser.add_argument('--bert_dir', type=str, default="", help='the bert embedding directory')
@@ -43,7 +44,6 @@ def init_config():
             help="if make variance variable trainable")
     parser.add_argument('--init_var', action='store_true', default=False)
     parser.add_argument('--init_var_one', action='store_true', default=False)
-    parser.add_argument('--aggressive', action='store_true', default=False)
     parser.add_argument('--beta_prior', type=float, default=0., help="regularize params")
     parser.add_argument('--beta_proj', type=float, default=0., help="regularize params")
     parser.add_argument('--beta_mean', type=float, default=0., help="regularize params")
@@ -56,12 +56,6 @@ def init_config():
     parser.add_argument('--seed', default=783435, type=int, help='random seed')
     parser.add_argument('--set_seed', action='store_true', default=False, help='if set seed')
 
-    # these are for slurm purpose to save model
-    # they can also be used to run multiple random restarts with various settings,
-    # to save models that can be identified with ids
-    parser.add_argument('--jobid', type=int, default=0, help='slurm job id')
-    parser.add_argument('--taskid', type=int, default=0, help='slurm task id')
-
     args = parser.parse_args()
     args.cuda = torch.cuda.is_available()
 
@@ -70,29 +64,30 @@ def init_config():
         args.bert_dev = os.path.join(args.bert_dir, args.lang, "{}_dev.hdf5".format(args.lang))
         args.bert_test = os.path.join(args.bert_dir, args.lang, "{}_test.hdf5".format(args.lang))
 
-    save_dir = "dump_models/markov"
+    root_dir = "outputs/tagging"
 
-    if not os.path.exists(save_dir):
-        os.makedirs(save_dir)
+    if not os.path.exists(root_dir):
+        os.makedirs(root_dir)
 
     # load config file into args
     config_file = "config.config_{}".format(args.lang)
     params = importlib.import_module(config_file).params_markov
     args = argparse.Namespace(**vars(args), **params)
 
-    id_ = "{}_{}_{}_{}_{}_{}_{}_{}".format(args.lang, args.mode, args.model, args.bert_dir.strip("/"),
-            args.couple_layers, args.cell_layers, args.jobid, args.taskid)
-    save_path = os.path.join(save_dir, id_ + '.pt')
-    args.save_path = save_path
-    print("model save path: ", save_path)
+    if args.save_dir == "":
+        bert_str = "_{}".format(args.bert_dir.strip("/")) if args.bert_dir != "" else "" 
 
-    # if args.tag_from != '':
-    #     if args.model == 'nice':
-    #         args.load_nice = args.tag_from
-    #     else:
-    #         args.load_gaussian = args.tag_from
-    #     args.tag_path = "pos_%s_%slayers_tagging%d_%d.txt" % \
-    #     (args.model, args.couple_layers, args.jobid, args.taskid)
+        id_ = "{}_{}_{}{}_couple{}_cell{}_bprior{}_bproj{}_bmean{}".format(args.lang, args.mode, args.model,
+                bert_str, args.couple_layers, args.cell_layers, args.beta_prior, args.beta_proj, args.beta_mean)
+
+        args.save_dir = os.path.join(root_dir, id_)
+
+    # note that this would remove and re-create the directory if it already exists
+    create_dir(args.save_dir)
+
+    args.save_path = os.path.join(args.save_dir, "model.pt")
+    args.log_path = os.path.join(args.save_dir, "stdout")
+    print("model save path: ", args.save_path)
 
     if args.set_seed:
         torch.manual_seed(args.seed)
@@ -100,12 +95,11 @@ def init_config():
             torch.cuda.manual_seed(args.seed)
         np.random.seed(args.seed)
 
-    print(args)
-
     return args
 
 def main(args):
 
+    print(args)
     if args.bert_dir == "":
         word_vec_dict = FastVector(vector_file=args.vec_file)
         word_vec_dict.apply_transform(args.align_file)
@@ -149,15 +143,6 @@ def main(args):
         model.init_params(train_data)
     print("complete init")
 
-    # if args.tag_from != '':
-    #     model.eval()
-    #     with torch.no_grad():
-    #         accuracy, vm = model.test(test_data, test_tags, sentences=test_text,
-    #             tagging=True, path=args.tag_path, null_index=null_index)
-    #     print('\n***** M1 %f, VM %f, max_var %.4f, min_var %.4f*****\n'
-    #           % (accuracy, vm, model.var.data.max(), model.var.data.min()), file=sys.stderr)
-    #     return
-
     opt_dict = {"not_improved": 0, "prior_lr": args.prior_lr,
                 "proj_lr": args.proj_lr, "best_score": 0}
 
@@ -165,9 +150,7 @@ def main(args):
         model.eval()
         with torch.no_grad():
             acc = model.test_supervised(test_data)
-            m1, vm, oneone = model.test_unsupervised(test_data)
         print("accuracy {}".format(acc))
-        print("M1 {}, VM {}, one-to-one {}".format(m1, vm, oneone))
         return
 
     if args.opt == "adam":
@@ -188,11 +171,8 @@ def main(args):
     model.eval()
     with torch.no_grad():
         acc = model.test_supervised(test_data)
-        m1, vm, oneone = model.test_unsupervised(test_data)
-        print("\nTEST: M1 {}, VM {}, one-to-one {}".format(m1, vm, oneone))
     print("\n*****starting acc {}, max_var {:.4f}, min_var {:.4f}*****\n".format(
           acc, model.var.max().item(), model.var.min().item()))
-    print("\nstarting: M1 {}, VM {}, one-to-one {}".format(m1, vm, oneone))
 
     model.train()
     for epoch in range(args.epochs):
@@ -200,33 +180,6 @@ def main(args):
         report_obj = report_jc = report_ll = report_num_words = 0
         for iter_obj in train_data.data_iter(batch_size=args.batch_size,
                                                 shuffle=True):
-
-            if args.aggressive:
-                inner_iter = 0
-                for iter_obj_tmp in train_data.data_iter(batch_size=args.batch_size,
-                                                                shuffle=True):
-                    proj_optimizer.zero_grad()
-                    prior_optimizer.zero_grad()
-                    batch_size = iter_obj_tmp.pos.size(1)
-                    sents_t, tags_t, masks = iter_obj_tmp.embed, iter_obj_tmp.pos, iter_obj_tmp.mask
-                    nll, jacobian_loss = model.unsupervised_loss(sents_t, masks)
-                    avg_ll_loss = (nll + jacobian_loss)/batch_size
-
-                    avg_ll_loss = avg_ll_loss + model.MLE_loss()
-                    avg_ll_loss.backward()
-
-                    prior_optimizer.step()
-                    inner_iter += 1
-                    if inner_iter > 10:
-                        break
-
-            # if args.mode == "supervised":
-            #     optimizer.zero_grad()
-            # elif args.mode == "unsupervised":
-            #     prior_optimizer.zero_grad()
-            #     proj_optimizer.zero_grad()
-            # else:
-            #     raise ValueError
 
             train_iter += 1
             batch_size = iter_obj.pos.size(1)
@@ -246,8 +199,7 @@ def main(args):
             avg_ll_loss = (nll + jacobian_loss)/batch_size
 
             if args.beta_prior > 0 or args.beta_proj > 0:
-                avg_ll_loss = avg_ll_loss + model.MLE_loss()
-                # avg_ll_loss = model.MLE_loss()
+                avg_ll_loss = avg_ll_loss + model.MSE_loss()
 
             avg_ll_loss.backward()
 
@@ -276,15 +228,6 @@ def main(args):
                       'min_var %.4f time elapsed %.2f sec' % (epoch, train_iter, report_ll / report_num_words, \
                       report_jc / report_num_words, report_obj / report_num_words, model.var.max(), \
                       model.var.min(), time.time() - begin_time))
-
-                # if args.mode == "unsupervised":
-                #     with torch.no_grad():
-                #         acc = model.test_supervised(test_vec, test_tag_ids)
-                #         m1, vm, oneone = model.test_unsupervised(test_vec, test_tag_ids)
-                #     print('\nTEST: *****epoch {}, iter {}, acc {}*****\n'.format(
-                #         epoch, train_iter, acc))
-                #     print("\nTEST: M1 {}, VM {}, one-to-one {}".format(m1, vm, oneone))
-
 
         print('\nepoch %d, log_likelihood %.2f, jacobian %.2f, obj %.2f\n' % \
             (epoch, report_ll / report_num_words, report_jc / report_num_words,
@@ -323,10 +266,8 @@ def main(args):
 
         with torch.no_grad():
             acc = model.test_supervised(test_data)
-            m1, vm, oneone = model.test_unsupervised(test_data)
         print('\nTEST: *****epoch {}, iter {}, acc {}*****\n'.format(
             epoch, train_iter, acc))
-        print("\nTEST: M1 {}, VM {}, one-to-one {}".format(m1, vm, oneone))
 
         model.train()
 
@@ -334,11 +275,11 @@ def main(args):
     model.load_state_dict(torch.load(args.save_path))
     with torch.no_grad():
         acc = model.test_supervised(test_data)
-        m1, vm, oneone = model.test_unsupervised(test_data)
         print('\nTEST: *****epoch {}, iter {}, acc {}*****\n'.format(
             epoch, train_iter, acc))
-        print("\nTEST: M1 {}, VM {}, one-to-one {}".format(m1, vm, oneone))
 
 if __name__ == '__main__':
     parse_args = init_config()
+    if parse_args.mode != "eval":
+        sys.stdout = Logger(parse_args.log_path)
     main(parse_args)

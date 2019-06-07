@@ -11,15 +11,16 @@ import numpy as np
 
 from torch.nn import Parameter
 from torch.nn.utils.rnn import pad_packed_sequence, pack_padded_sequence
-from sklearn.metrics.cluster import v_measure_score
-from scipy.optimize import linear_sum_assignment
+
 from collections import defaultdict
 
 from .utils import log_sum_exp, data_iter, to_input_tensor, \
                    write_conll
 from .projection import *
 
-
+# uncomment the following to use test_unsupervised()
+# from sklearn.metrics.cluster import v_measure_score
+# from scipy.optimize import linear_sum_assignment
 
 class MarkovFlow(nn.Module):
     def __init__(self, args, num_dims):
@@ -229,7 +230,7 @@ class MarkovFlow(nn.Module):
 
         return x, jacobian_loss
 
-    def MLE_loss(self):
+    def MSE_loss(self):
         # diff1 = ((self.means - self.means_init) ** 2).sum()
         diff_prior = ((self.tparams - self.tparams_init) ** 2).sum()
 

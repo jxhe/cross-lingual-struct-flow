@@ -1,4 +1,6 @@
 import math
+import os
+import shutil
 import numpy as np
 from math import log
 from collections import defaultdict
@@ -213,3 +215,11 @@ def unravel_index(input, size):
         input = input / adim
     idx = idx[::-1]
     return torch.cat(idx, -1)
+
+def create_dir(dir_):
+    """create dir_. Remove the original one if dir_ already exists 
+    """
+    if os.path.exists(dir_):
+        shutil.rmtree(dir_)
+
+    os.makedirs(dir_)

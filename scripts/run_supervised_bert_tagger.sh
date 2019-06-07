@@ -13,4 +13,4 @@ CUDA_VISIBLE_DEVICES=$1 python -u markov_flow_train.py \
         --mode supervised \
         --bert_dir bert-base-multilingual-cased \
         --set_seed \
-        --taskid $2
+

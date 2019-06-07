@@ -6,7 +6,7 @@
 # Distributed under terms of the MIT license.
 #
 
-python -u dmv_flow_train.py \
+CUDA_VISIBLE_DEVICES=$1 python -u dmv_flow_train.py \
         --lang en \
         --mode supervised_wopos \
         --model nice \
@@ -14,6 +14,5 @@ python -u dmv_flow_train.py \
         --max_len 200 \
         --pos_emb_dim 300 \
         --em_train \
-        --taskid $1 \
         --set_seed \
 

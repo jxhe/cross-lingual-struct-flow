@@ -16,9 +16,11 @@ CUDA_VISIBLE_DEVICES=$1 python -u dmv_flow_train.py \
         --train_max_len 40 \
         --pos_emb_dim 300 \
         --proj_lr 0.001 \
-        --prior_lr 0.01 \
+        --prior_lr 0.001 \
         --freeze_pos_emb \
-        --load_nice ./dump_models/dmv/en_supervised_wopos_nice_0_20.pt \
-        --beta 0.1 \
-        --taskid $3 > $4
+        --bert_dir bert-base-multilingual-cased \
+        --load_nice outputs/parsing/en_supervised_wopos_nice_bert-base-multilingual-cased_bprior0.0_bproj0.0_bmean0.0_em/model.pt \
+        --beta_prior 1. \
+        --beta_proj 0.1 \
+        --beta_mean 0.1 \
 

@@ -6,6 +6,11 @@ This new dict is created mainly for debugging
 and tuning purpose
 
 """
+if __name__ == "__main__" and __package__ is None:
+    from sys import path
+    from os.path import dirname as dir
+
+    path.append(dir(path[0]))
 
 import argparse
 import importlib
@@ -60,7 +65,7 @@ print("vocab length {}".format(len(vocab)))
 # mean = sum_ / cnt
 
 suffix = args.train_file.split('/')[-1].split('-')[0].split('_')[1]
-out_file = "fastText_data/wiki.{}.{}.vec".format(args.lang, suffix)
+out_file = "fastText_data/wiki.{}.{}.vec.new".format(args.lang, suffix)
 with open(out_file, "w", encoding="utf-8") as fout:
     fout.write("{} {}\n".format(len(vocab), ndim))
     for word in vocab:

@@ -441,8 +441,7 @@ class DMVFlow(nn.Module):
 
         return d, l
 
-    def MLE_loss(self):
-        # diff1 = ((self.means - self.means_init) ** 2).sum()
+    def MSE_loss(self):
         diff_prior = ((self.attach_left - self.attach_left_init) ** 2).sum()
         diff_prior = diff_prior + ((self.attach_right - self.attach_right_init) ** 2).sum()
         diff_prior = diff_prior + ((self.stop_left - self.stop_left_init) ** 2).sum()

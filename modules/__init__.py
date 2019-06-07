@@ -4,3 +4,4 @@ from .dmv_viterbi_model import *
 from .dmv_flow_model import *
 from .projection import *
 from .conllu_data import *
+from .logger import *

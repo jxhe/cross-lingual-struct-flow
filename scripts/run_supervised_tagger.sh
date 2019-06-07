@@ -12,4 +12,4 @@ CUDA_VISIBLE_DEVICES=$1 python -u markov_flow_train.py \
         --model nice \
         --mode supervised \
         --set_seed \
-        --taskid $2
+        

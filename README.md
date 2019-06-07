@@ -1,112 +1,118 @@
-# struct-learning-with-flow
+# Cross-lingual structured flow model for zero-shot syntactic transfer 
 
-This is PyTorch implementation of the [paper](https://arxiv.org/abs/1808.09111):
+This is PyTorch implementation of the [paper](https://arxiv.org/abs/1906.02656):
 ```
-Unsupervised Learning of Syntactic Structure with Invertible Neural Projections
-Junxian He, Graham Neubig, Taylor Berg-Kirkpatrick
-EMNLP 2018
+Cross-Lingual Syntactic Transfer through Unsupervised Adaptation of Invertible Projections
+Junxian He, Zhisong Zhang, Taylor Berg-Kiripatrick, Graham Neubig
+ACL 2019
 ```
 
-The code performs unsupervised structure learning with flow, specifically on Markov structure and dependency structure.
+The structured flow model is a generative model that can be trained in an supervised fashion on labeled data in another language, but also perform unsupervised training to directly maximize likelihood of the target language. In this way, it is able to transfer shared linguistic knowledge from the source language as well as learning language-specific knowledge on the unlabeled target language.
 
 Please concact junxianh@cs.cmu.edu if you have any questions.
 
 ## Requirements
 
-- Python 3.6
-- PyTorch >=0.4
-- [scikit-learn](http://scikit-learn.org/stable/) (for tagging task only)
-- [NLTK](https://www.nltk.org/) (for parsing task only)
+- Python >= 3.6
+- PyTorch >= 0.4
+- [conllu](https://github.com/EmilStenstrom/conllu) (installation: `pip install conllu`)
+
+Optional in case of using multilingual BERT:
+- [pytorch-pretrained-BERT](https://github.com/huggingface/pytorch-pretrained-BERT) (installation: `pip install pytorch-pretrained-bert`)
 
 ## Data
-Throughout two tasks we use simplified CoNLL format as data input that contains four columns:
+Download the Universal Dependencies 2.2 [here](https://lindat.mff.cuni.cz/repository/xmlui/handle/11234/1-2837) (`ud-treebanks-v2.2.tgz`), put file `ud-treebanks-v2.2.tgz` into the top-level directory of this repo, and run:
 ```
-ID Token Tag Head
-```
-At training time only `Token` is used, `Head` represents the dependency head index (for evaluation of parsing task). `Tag` is used for evaluation of tagging task.
-
-As observations in our generative model, pre-trained word vectors are required. The input word2vec map should be a pickled representation of Python dict object.
-
-We provide the pre-trained word vector file we used in the paper and a small subset of Penn Treebank data ([HERE](https://drive.google.com/file/d/18f61nN7l-Dvzqys7BypCsaCcj8gay7ip/view?usp=sharing)) for testing the tagging code. This dataset contains 10% samples of Penn Treebank and is public in [NLTK corpus](http://www.nltk.org/howto/corpus.html). Full Penn Treebank dataset requires a LDC license.
-
-## Markov Structure for Tagging
-
-### Training
-
-Train a Gaussian HMM baseline: 
-
-```shell
-python markov_flow_train.py --model gaussian --train_file /path/to/train --word_vec /path/to/word_vec_file
+tar -xvzf ud-treebanks-v2.2.tgz
+rm ud-treebanks-v2.2.tgz
 ```
 
-By default we evaluate on the training data (this is not cheating in unsupervised learning case),  different test dataset can be specified by `--test_file` option. Training uses GPU when there is GPU available,  and CPU otherwise, but running on CPU can be extremely slow. Full configuration options can be found in `markov_flow_train.py`. After training the trained model will be saved in `dump_models/markov/`.
+## Prepare Embeddings
+### fastText
+The fastText embeddings can be downloaded on the Facebook fastText [repo](https://github.com/facebookresearch/fastText/blob/master/docs/pretrained-vectors.md) (Note that there are different versions of pretrained fastText embeddings in the fastText repo, but the embeddings must be downloaded from the given link since the alignment matrices (from [here](https://github.com/Babylonpartners/fastText_multilingual)) we used are learned on this specific version of fastText embeddings. Download the fastText model `bin` file and put it into the `fastText_data` folder.
 
-Unsupervised learning is usually very sensitive to initializations, for this task we run multiple random restarts and pick the one with the highest training data likelihood as described in paper. It is generally sufficient to run 10 random restarts. When running with multiple random restarts, it is necessary to specify the `--jobid` or `--taskid` options to avoid model overwriting.
+Take English language as an example to preprocess the fastText embeddings:
+```
+cd fastText_data
+wget https://dl.fbaipublicfiles.com/fasttext/vectors-wiki/wiki.en.zip
+unzip wiki.en.zip
+cd ..
 
-After training the Gaussian HMM, train a projection model with Markov prior:
+# create a subset of embedding dict for faster embedding loading and memory efficiency
+python scripts/compress_vec_dict.py --lang en
 
-```shell
-python markov_flow_train.py \
-        --model nice \
-        --train_file /path/to/train \
-        --word_vec /path/to/word_vec_file \
-        --load_gaussian /path/to/gaussian_model 
+rm wiki.en.vec
+rm wiki.en.zip
 ```
 
-Initializing the prior with pre-trained Gaussian baseline would make the training much more stable. By default 4 coupling layers are used in NICE projection. 
+The argument for `--lang` is the short code of the language, the list of short codes and corresponding languages is in `statistics/lang_list.txt`.
 
-### Results
-
-On the provided subset of Penn Treebank that contains 3914 sentences, the Gaussian HMM is able to achieve ~76.5% M1 accuracy and ~0.692 VM score, and the projection model (4 layers) achieves ~79.2% M1 accuracy and ~0.718 VM score.
-
-### Prediction
-
-After training, prediction can be performed with :
-
-```shell
-python markov_flow_train.py --model nice --train_file /path/to/tag_file --tag_from /path/to/pretrained_model
+### multilingual BERT (mBERT)
 ```
-
-Here `--train_file` represents the file to be tagged, the output file is located in the current directory. 
-
-
-
-
-## DMV Structure for Parsing
-### Training
-
-First train a vanilla DMV model with viterbi EM (this only runs on CPU):
-
-```shell
-python dmv_viterbi_train.py --train_file /path/to/train_data --test_file /path/to/test_data
+CUDA_VISIBLE_DEVICES=xx python scripts/create_cwr.py --lang [language code]
 ```
+This command pre-computes the BERT contexualized word representations using [pytorch-pretrained-BERT](https://github.com/huggingface/pytorch-pretrained-BERT) for each sentence in the corresponding treebank. These embeddings are saved in `bert-base-multilingual-cased` (will be created automatically) as `hdf5` files. This command would download the pretrained multilingual BERT model and cache it when it is executed for the first time. 
 
-Trained model is saved in `dump_models/dmv/viterbi_dmv.pickle`. Implementation of this basic DMV training is partially based on [this repo](https://github.com/davidswelt/dmvccm).
-
-
-
-Then use the pre-trained DMV to initialize the syntax model in flow/Gaussian model:
-
-```shell
-python dmv_flow_train.py \
-        --model nice \
-        --train_file /path/to/train_data \
-        --test_file /path/to/test_data \
-        --word_vec /path/to/word_vec_file \
-        --load_viterbi_dmv dump_models/dmv/viterbi_dmv.pickle
+## POS Tagging
+Several training scripts are provided (note that supervised training scripts must be run first before running unsupervised training scripts):
 ```
+# supervised training on English with fastText
+# [gpu_id] is an integer number
+./scripts/run_supervised_tagger.sh [gpu_id]
 
-The script trains a Gaussian baseline when `--model` is specified as `gaussian`. Training uses GPU when there is GPU available,  and CPU otherwise. Trained model is saved in `dump_models/dmv/`.
+# unsupervised training on other languages with fastText
+./scripts/run_unsupervised_tagger.sh [gpu_id] [language code]
 
 
+
+
+# supervised training on English with mBERT
+./scripts/run_supervised_bert_tagger.sh [gpu_id]
+
+# unsupervised training on other languages with mBERT
+./scripts/run_unsupervised_bert_tagger.sh [gpu_id] [language code]
+``` 
+Trained models and logs are saved in `outputs/tagging`. 
+
+## Dependency Parsing
+Several training scripts are provided (note that supervised training scripts must be run first before running unsupervised training scripts):
+```
+# supervised training on English with fastText
+# [gpu_id] is an integer number
+./scripts/run_supervised_parser.sh [gpu_id]
+
+# unsupervised training on distant languages with fastText
+./scripts/run_unsupervised_parser_distant.sh [gpu_id] [language code]
+
+# unsupervised training on nearby languages with fastText
+./scripts/run_unsupervised_parser_nearby.sh [gpu_id] [language code]
+
+
+
+
+# supervised training on English with mBERT
+# [gpu_id] is an integer number
+./scripts/run_supervised_parser.sh [gpu_id]
+
+# unsupervised training on distant languages with mBERT
+./scripts/run_unsupervised_parser_distant.sh [gpu_id] [language code]
+
+# unsupervised training on nearby languages with mBERT
+./scripts/run_unsupervised_parser_nearby.sh [gpu_id] [language code]
+```
+Trained models and logs are saved in `outputs/parsing`.
+
+## Acknowledgement
+This project would not be possible without the [URIEL](http://www.cs.cmu.edu/~dmortens/uriel.html) linguistic database, pre-computed [fastText alignment matrix](https://github.com/Babylonpartners/fastText_multilingual), Google's pretrained [multilingual BERT model](https://github.com/google-research/bert), and the pyTorch interface of pretrained BERT models [pytorch-pretrained-BERT](https://github.com/huggingface/pytorch-pretrained-BERT).
 
 ## Reference
 ```
-@inproceedings{he2018unsupervised,
-    title = {Unsupervised Learning of Syntactic Structure with Invertible Neural Projections},
-    author = {Junxian He and Graham Neubig and Taylor Berg-Kirkpatrick},
-    booktitle = {Proceedings of EMNLP},
-    year = {2018}
+@inproceedings{he19acl,
+    title = {Cross-Lingual Syntactic Transfer through Unsupervised Adaptation of Invertible Projections},
+    author = {Junxian He and Zhisong Zhang and Taylor Berg-Kirkpatrick and Graham Neubig},
+    booktitle = {Proceedings of ACL},
+    year = {2019}
 }
+
 ```
 

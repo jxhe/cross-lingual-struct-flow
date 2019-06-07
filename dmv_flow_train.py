@@ -13,7 +13,6 @@ import numpy as np
 from modules import *
 
 from multilingual_trans.fasttext import FastVector
-from logger import Logger
 
 lr_decay = 0.5
 
@@ -27,8 +26,10 @@ def init_config():
     # model config
     parser.add_argument('--model', choices=["gaussian", "nice", "lstmnice"], default='gaussian')
     parser.add_argument('--mode',
-                         choices=['supervised_wpos', 'supervised_wopos', 'unsupervised', 'both', 'eval'],
+                         choices=['supervised_wpos', 'supervised_wopos', 'unsupervised', 'eval'],
                          default='supervised')
+    parser.add_argument('--save_dir', default="", 
+        help="output directory. If not empty, the argument outdir would overwrite the default output directory")
 
     # BERT
     parser.add_argument('--bert_dir', type=str, default="", help='the bert embedding directory')
@@ -67,12 +68,6 @@ def init_config():
     parser.add_argument('--seed', default=783435, type=int, help='random seed')
     parser.add_argument('--set_seed', action='store_true', default=False, help='if set seed')
 
-    # these are for slurm purpose to save model
-    # they can also be used to run multiple random restarts with various settings,
-    # to save models that can be identified with ids
-    parser.add_argument('--jobid', type=int, default=0, help='slurm job id')
-    parser.add_argument('--taskid', type=int, default=0, help='slurm task id')
-
     args = parser.parse_args()
     args.cuda = torch.cuda.is_available()
 
@@ -81,27 +76,27 @@ def init_config():
         args.bert_dev = os.path.join(args.bert_dir, args.lang, "{}_dev.hdf5".format(args.lang))
         args.bert_test = os.path.join(args.bert_dir, args.lang, "{}_test.hdf5".format(args.lang))
 
-    save_dir = "dump_models/dmv"
-    log_dir = "logs/dmv"
+    root_dir = "outputs/parsing"
 
-    if not os.path.exists(save_dir):
-        os.makedirs(save_dir)
+    if not os.path.exists(root_dir):
+        os.makedirs(root_dir)
 
-    if not os.path.exists(log_dir):
-        os.makedirs(log_dir)
+    if args.save_dir == "":
+        bert_str = "_{}".format(args.bert_dir.strip("/")) if args.bert_dir != "" else "" 
+        em_str = "_em" if args.em_train else ""
+        freeze_mean_str = "_frmean" if args.freeze_mean else ""
+        freeze_proj_str = "_frproj" if args.freeze_proj else ""
+        freeze_prior_str = "_frprior" if args.freeze_prior else ""
 
-    em_str = "_em" if args.em_train else ""
-    freeze_mean_str = "_frmean" if args.freeze_mean else ""
-    freeze_proj_str = "_frproj" if args.freeze_proj else ""
-    freeze_prior_str = "_frprior" if args.freeze_prior else ""
+        id_ = "{}_{}_{}{}_bprior{}_bproj{}_bmean{}{}{}{}{}".format(args.lang, args.mode, args.model, bert_str,
+            args.beta_prior, args.beta_proj, args.beta_mean, em_str, freeze_mean_str, freeze_proj_str, freeze_prior_str)
+        args.save_dir = os.path.join(root_dir, id_)
 
-    id_ = "{}_{}_{}_{}_posemb{}_bprior{}_bproj{}_bmean{}_{}_{}{}{}{}{}".format(args.lang, args.mode, args.model, args.bert_dir.strip("/"),
-        args.pos_emb_dim, args.beta_prior, args.beta_proj, args.beta_mean, args.jobid, args.taskid, em_str, freeze_mean_str, freeze_proj_str, freeze_prior_str)
-    save_path = os.path.join(save_dir, id_ + '.pt')
-    args.save_path = save_path
-    args.log_path = os.path.join(log_dir, id_ + ".log")
-
-    print("model save path: ", save_path)
+    # note that this would remove and re-create the directory if it already exists
+    create_dir(args.save_dir)
+    args.save_path = os.path.join(args.save_dir, "model.pt")
+    args.log_path = os.path.join(args.save_dir, "stdout")
+    print("model save path: ", args.save_path)
 
     pred_dir = "predict/dmv"
 
@@ -129,12 +124,12 @@ def init_config():
             torch.cuda.manual_seed(args.seed)
         np.random.seed(args.seed)
 
-    print(args)
-
     return args
 
 
 def main(args):
+
+    print(args)
 
     if args.bert_dir == "":
         word_vec_dict = FastVector(vector_file=args.vec_file)
@@ -175,8 +170,6 @@ def main(args):
     print("#test sentences: {}".format(test_data.length))
 
     exclude_pos = [pos_to_id["PUNCT"], pos_to_id["SYM"]]
-    # model = DMVFlow(args, len(pos_to_id),
-    #     num_dims, exclude_pos, word_vec_dict).to(device)
 
     model = DMVFlow(args, len(pos_to_id),
         num_dims, exclude_pos).to(device)
@@ -189,7 +182,6 @@ def main(args):
     opt_dict = {"not_improved": 0, "prior_lr": args.prior_lr, "best_score": 0, "proj_lr": args.proj_lr}
 
     if args.prior_opt == "adam":
-        # prior_optimizer = torch.optim.Adam(model.prior_group, lr=args.prior_lr, weight_decay=.1)
         prior_optimizer = torch.optim.Adam(model.prior_group, lr=args.prior_lr)
     elif args.prior_opt == "sgd":
         prior_optimizer = torch.optim.SGD(model.prior_group, lr=args.prior_lr)
@@ -214,13 +206,10 @@ def main(args):
     stop_avg_ll_last = 1
     dir_last = 0
     begin_time = time.time()
-    # with torch.no_grad():
-    #     directed = model.test(test_data)
-    # print("TEST accuracy: {}".format(directed))
+
 
     best_acc = 0.
     if args.mode == "unsupervised":
-        # nrep = 100
         nrep = 1
     else:
         nrep = 3
@@ -250,30 +239,6 @@ def main(args):
         report_num_sents = [0]
         report_num_words = [0]
         if args.mode == "supervised_wopos":
-            # prior_optimizer.zero_grad()
-            # proj_optimizer.zero_grad()
-            # id_l = np.random.permutation(len(train_data.trees))
-            # loc = 0
-            # cnt = 0
-            # while loc <= len(train_data.trees):
-            #     end = min(len(train_data.trees), loc + args.batch_size)
-            #     iter_tree = [train_data.trees[i] for i in range(loc, end)]
-            #     iter_embed = [train_data.embed[i] for i in range(loc, end)]
-            #     loc += args.batch_size
-            #     num_words = sum(len(embed) for embed in iter_embed)
-            #     def closure():
-            #         optimizer.zero_grad()
-            #         res = torch.zeros([], device=device, requires_grad=False)
-            #         for tree, embed in zip(iter_tree, iter_embed):
-            #             nll, jacobian_loss = model.supervised_loss_wopos(tree, embed)
-            #             report_ll[0] -= nll.item()
-            #             report_num_sents[0] += 1
-            #             nll.backward()
-            #             res = res + nll
-
-            #         return res
-            #     optimizer.step(closure)
-            #     cnt += 1
             for cnt, i in enumerate(np.random.permutation(len(train_data.trees))):
                 if batch_flag:
                     sub_iter = 0
@@ -300,16 +265,13 @@ def main(args):
 
                 if (cnt+1) % args.batch_size == 0:
                     torch.nn.utils.clip_grad_norm_(model.proj_group, 5.0)
-                    # torch.nn.utils.clip_grad_norm_(model.prior_group, 5.0)
+                    torch.nn.utils.clip_grad_norm_(model.prior_group, 5.0)
 
-                    # if not args.em_train:
-                    #     prior_optimizer.step()
                     prior_optimizer.step()
                     proj_optimizer.step()
 
                     prior_optimizer.zero_grad()
                     proj_optimizer.zero_grad()
-                    # batch_flag = True
 
 
                 report_ll[0] -= nll.item()
@@ -340,13 +302,12 @@ def main(args):
                 avg_ll_loss = (nll + jacobian_loss) / batch_size
 
                 if args.beta_prior > 0 or args.beta_proj > 0 or args.beta_mean > 0:
-                    avg_ll_loss = avg_ll_loss + model.MLE_loss()
+                    avg_ll_loss = avg_ll_loss + model.MSE_loss()
 
                 avg_ll_loss.backward()
 
                 torch.nn.utils.clip_grad_norm_(model.proj_group, 5.0)
                 torch.nn.utils.clip_grad_norm_(model.prior_group, 5.0)
-                # torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
                 proj_optimizer.step()
 
                 if not args.up_em:
@@ -364,21 +325,13 @@ def main(args):
                           report_ll[0] / report_num_words[0], model.var.data.max(), \
                           model.var.data.min(), time.time() - begin_time))
 
-                # break
-
                 train_iter += 1
 
-        # print("\nTRAIN epoch {}: ll_per_sent: {:.4f}, ll_per_word: {:.4f}\n".format(
-        #     epoch, report_ll / report_num_sents, report_ll / report_num_words))
         if args.em_train:
             with torch.no_grad():
                 pos_seq = model.parse_pos_seq(train_data)
-                # acc = model.test(test_data)
-                # print("TEST: epoch{}, acc {} before EM setting".format(epoch, acc))
                 print("Viterbi EM: set DMV parameters")
                 model.set_dmv_params(train_data, pos_seq)
-                # acc = model.test(test_data)
-                # print("TEST: epoch{}, acc {} after EM setting".format(epoch, acc))
 
         if args.up_em:
             with torch.no_grad():
@@ -386,49 +339,17 @@ def main(args):
                 model.up_viterbi_em(train_data)
 
         if epoch % nrep == 0:
-            # model.print_param()
             with torch.no_grad():
-                # acc = model.test(train_data)
-                # print('\nTRAIN: *****epoch {}, iter {}, acc {}*****\n'.format(
-                #     epoch, train_iter, acc))
                 acc = model.test(test_data)
                 print('\nTEST: *****epoch {}, iter {}, acc {}*****\n'.format(
                     epoch, train_iter, acc))
 
-        # if args.mode == "supervised_wpos" or args.mode == "supervised_wopos":
-        #     with torch.no_grad():
-        #         acc = model.test(val_data)
-        #         print('\nDEV: *****epoch {}, iter {}, acc {}*****\n'.format(
-        #             epoch, train_iter, acc))
-
-        #     if acc > opt_dict["best_score"]:
-        #         opt_dict["best_score"] = acc
-        #         opt_dict["not_improved"] = 0
-        #         torch.save(model.state_dict(), args.save_path)
-        #     else:
-        #         opt_dict["not_improved"] += 1
-        #         if opt_dict["not_improved"] >= 2:
-        #             opt_dict["not_improved"] = 0
-        #             opt_dict["prior_lr"] = opt_dict["prior_lr"] * lr_decay
-        #             opt_dict["proj_lr"] = opt_dict["proj_lr"] * lr_decay
-        #             model.load_state_dict(torch.load(args.save_path))
-        #             print("new prior lr decay: {}".format(opt_dict["prior_lr"]))
-        #             print("new proj lr decay: {}".format(opt_dict["proj_lr"]))
-        #             prior_optimizer = torch.optim.Adam(model.prior_group, lr=opt_dict["prior_lr"])
-        #             proj_optimizer = torch.optim.Adam(model.proj_group, lr=opt_dict["proj_lr"])
-        # else:
-        #     torch.save(model.state_dict(), args.save_path)
-
         torch.save(model.state_dict(), args.save_path)
 
     with torch.no_grad():
-        # acc = model.test(train_data)
-        # print('\nTRAIN: *****epoch {}, iter {}, acc {}*****\n'.format(
-        #     epoch, train_iter, acc))
         acc = model.test(test_data, predict=args.pred_file_end)
         print('\nTEST: *****epoch {}, iter {}, acc {}*****\n'.format(
             epoch, train_iter, acc))
-    # torch.save(model.state_dict(), args.save_path)
 
 if __name__ == '__main__':
     parse_args = init_config()
