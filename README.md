@@ -23,8 +23,8 @@ Required if using multilingual BERT:
 ## Data
 Download the Universal Dependencies 2.2 [here](https://lindat.mff.cuni.cz/repository/xmlui/handle/11234/1-2837) (`ud-treebanks-v2.2.tgz`), put file `ud-treebanks-v2.2.tgz` into the top-level directory of this repo, and run:
 ```
-tar -xvzf ud-treebanks-v2.2.tgz
-rm ud-treebanks-v2.2.tgz
+$ tar -xvzf ud-treebanks-v2.2.tgz
+$ rm ud-treebanks-v2.2.tgz
 ```
 
 ## Prepare Embeddings
@@ -33,23 +33,23 @@ The fastText embeddings can be downloaded in the Facebook fastText [repo](https:
 
 Take English language as an example to download and preprocess the fastText embeddings:
 ```
-cd fastText_data
-wget https://dl.fbaipublicfiles.com/fasttext/vectors-wiki/wiki.en.zip
-unzip wiki.en.zip
-cd ..
+$ cd fastText_data
+$ wget https://dl.fbaipublicfiles.com/fasttext/vectors-wiki/wiki.en.zip
+$ unzip wiki.en.zip
+$ cd ..
 
 # create a subset of embedding dict for faster embedding loading and memory efficiency
-python scripts/compress_vec_dict.py --lang en
+$ python scripts/compress_vec_dict.py --lang en
 
-rm wiki.en.vec
-rm wiki.en.zip
+$ rm wiki.en.vec
+$ rm wiki.en.zip
 ```
 
 The argument for `--lang` is the short code of the language, the list of short codes and corresponding languages is in `statistics/lang_list.txt`.
 
 ### multilingual BERT (mBERT)
 ```
-CUDA_VISIBLE_DEVICES=xx python scripts/create_cwr.py --lang [language code]
+$ CUDA_VISIBLE_DEVICES=xx python scripts/create_cwr.py --lang [language code]
 ```
 This command pre-computes the BERT contexualized word representations using [pytorch-pretrained-BERT](https://github.com/huggingface/pytorch-pretrained-BERT) for each sentence in the corresponding treebank. These embeddings are saved in `bert-base-multilingual-cased` (will be created automatically) as `hdf5` files. This command would download the pretrained multilingual BERT model and cache it when it is executed for the first time. 
 
@@ -58,19 +58,19 @@ Several training scripts are provided (note that supervised training scripts mus
 ```
 # supervised training on English with fastText
 # [gpu_id] is an integer number
-./scripts/run_supervised_tagger.sh [gpu_id]
+$ ./scripts/run_supervised_tagger.sh [gpu_id]
 
 # unsupervised training on other languages with fastText
-./scripts/run_unsupervised_tagger.sh [gpu_id] [language code]
+$ ./scripts/run_unsupervised_tagger.sh [gpu_id] [language code]
 
 
 
 
 # supervised training on English with mBERT
-./scripts/run_supervised_bert_tagger.sh [gpu_id]
+$ ./scripts/run_supervised_bert_tagger.sh [gpu_id]
 
 # unsupervised training on other languages with mBERT
-./scripts/run_unsupervised_bert_tagger.sh [gpu_id] [language code]
+$ ./scripts/run_unsupervised_bert_tagger.sh [gpu_id] [language code]
 ``` 
 Trained models and logs are saved in `outputs/tagging`. 
 
@@ -79,26 +79,26 @@ Several training scripts are provided (note that supervised training scripts mus
 ```
 # supervised training on English with fastText
 # [gpu_id] is an integer number
-./scripts/run_supervised_parser.sh [gpu_id]
+$ ./scripts/run_supervised_parser.sh [gpu_id]
 
 # unsupervised training on distant languages with fastText
-./scripts/run_unsupervised_parser_distant.sh [gpu_id] [language code]
+$ ./scripts/run_unsupervised_parser_distant.sh [gpu_id] [language code]
 
 # unsupervised training on nearby languages with fastText
-./scripts/run_unsupervised_parser_nearby.sh [gpu_id] [language code]
+$ ./scripts/run_unsupervised_parser_nearby.sh [gpu_id] [language code]
 
 
 
 
 # supervised training on English with mBERT
 # [gpu_id] is an integer number
-./scripts/run_supervised_parser.sh [gpu_id]
+$ ./scripts/run_supervised_parser.sh [gpu_id]
 
 # unsupervised training on distant languages with mBERT
-./scripts/run_unsupervised_parser_distant.sh [gpu_id] [language code]
+$ ./scripts/run_unsupervised_parser_distant.sh [gpu_id] [language code]
 
 # unsupervised training on nearby languages with mBERT
-./scripts/run_unsupervised_parser_nearby.sh [gpu_id] [language code]
+$ ./scripts/run_unsupervised_parser_nearby.sh [gpu_id] [language code]
 ```
 Trained models and logs are saved in `outputs/parsing`.
 
