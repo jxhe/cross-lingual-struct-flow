@@ -29,7 +29,7 @@ rm ud-treebanks-v2.2.tgz
 
 ## Prepare Embeddings
 ### fastText
-The fastText embeddings can be downloaded on the Facebook fastText [repo](https://github.com/facebookresearch/fastText/blob/master/docs/pretrained-vectors.md) (Note that there are different versions of pretrained fastText embeddings in the fastText repo, but the embeddings must be downloaded from the given link since the alignment matrices (from [here](https://github.com/Babylonpartners/fastText_multilingual)) we used are learned on this specific version of fastText embeddings. Download the fastText model `bin` file and put it into the `fastText_data` folder.
+The fastText embeddings can be downloaded in the Facebook fastText [repo](https://github.com/facebookresearch/fastText/blob/master/docs/pretrained-vectors.md) (Note that there are different versions of pretrained fastText embeddings in the fastText repo, but the embeddings must be downloaded from the given link since the alignment matrices (from [here](https://github.com/Babylonpartners/fastText_multilingual)) we used are learned on this specific version of fastText embeddings). Download the fastText model `bin` file and put it into the `fastText_data` folder.
 
 Take English language as an example to preprocess the fastText embeddings:
 ```
