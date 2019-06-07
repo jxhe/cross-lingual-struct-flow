@@ -17,7 +17,7 @@ Please concact junxianh@cs.cmu.edu if you have any questions.
 - PyTorch >= 0.4
 - [conllu](https://github.com/EmilStenstrom/conllu) (installation: `pip install conllu`)
 
-Optional in case of using multilingual BERT:
+Required if using multilingual BERT:
 - [pytorch-pretrained-BERT](https://github.com/huggingface/pytorch-pretrained-BERT) (installation: `pip install pytorch-pretrained-bert`)
 
 ## Data
