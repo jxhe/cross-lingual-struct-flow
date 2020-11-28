@@ -92,13 +92,13 @@ $ ./scripts/run_unsupervised_parser_nearby.sh [gpu_id] [language code]
 
 # supervised training on English with mBERT
 # [gpu_id] is an integer number
-$ ./scripts/run_supervised_parser.sh [gpu_id]
+$ ./scripts/run_supervised_bert_parser.sh [gpu_id]
 
 # unsupervised training on distant languages with mBERT
-$ ./scripts/run_unsupervised_parser_distant.sh [gpu_id] [language code]
+$ ./scripts/run_unsupervised_bert_parser_distant.sh [gpu_id] [language code]
 
 # unsupervised training on nearby languages with mBERT
-$ ./scripts/run_unsupervised_parser_nearby.sh [gpu_id] [language code]
+$ ./scripts/run_unsupervised_bert_parser_nearby.sh [gpu_id] [language code]
 ```
 Trained models and logs are saved in `outputs/parsing`.
 
