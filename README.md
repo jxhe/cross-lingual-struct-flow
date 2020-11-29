@@ -14,11 +14,12 @@ Please concact junxianh@cs.cmu.edu if you have any questions.
 ## Requirements
 
 - Python >= 3.6
-- PyTorch >= 0.4
-- [conllu](https://github.com/EmilStenstrom/conllu) (installation: `pip install conllu`)
+- PyTorch >= 0.4 (the code is tested up to version 1.7.0)
 
-Required if using multilingual BERT:
-- [pytorch-pretrained-BERT](https://github.com/huggingface/pytorch-pretrained-BERT) (installation: `pip install pytorch-pretrained-bert`)
+Additional requirements can be installed via:
+```bash
+pip install -r requirements.txt
+```
 
 ## Data
 Download the Universal Dependencies 2.2 [here](https://lindat.mff.cuni.cz/repository/xmlui/handle/11234/1-2837) (`ud-treebanks-v2.2.tgz`), put file `ud-treebanks-v2.2.tgz` into the top-level directory of this repo, and run:
