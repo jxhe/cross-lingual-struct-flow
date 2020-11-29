@@ -1,0 +1,6 @@
+nltk
+conllu
+
+h5py==2.10.0
+transformers==3.5.0
+
