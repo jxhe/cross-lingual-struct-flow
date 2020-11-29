@@ -104,7 +104,7 @@ $ ./scripts/run_unsupervised_bert_parser_nearby.sh [gpu_id] [language code]
 Trained models and logs are saved in `outputs/parsing`.
 
 ## Acknowledgement
-This project would not be possible without the [URIEL](http://www.cs.cmu.edu/~dmortens/uriel.html) linguistic database, pre-computed [fastText alignment matrix](https://github.com/Babylonpartners/fastText_multilingual), Google's pretrained [multilingual BERT model](https://github.com/google-research/bert), and the pyTorch interface of pretrained BERT models [pytorch-pretrained-BERT](https://github.com/huggingface/pytorch-pretrained-BERT).
+This project would not be possible without the [URIEL](http://www.cs.cmu.edu/~dmortens/uriel.html) linguistic database, pre-computed [fastText alignment matrix](https://github.com/Babylonpartners/fastText_multilingual), Google's pretrained [multilingual BERT model](https://github.com/google-research/bert), and the huggingface [transformers](https://github.com/huggingface/transformers).
 
 ## Reference
 ```
