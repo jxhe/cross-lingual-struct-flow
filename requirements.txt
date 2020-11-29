@@ -2,5 +2,7 @@ nltk
 conllu
 
 h5py==2.10.0
+
+# transformers is optional. It is used for contexualized word embeddings
 transformers==3.5.0
 
