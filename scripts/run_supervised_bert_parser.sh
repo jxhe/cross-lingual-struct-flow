@@ -11,7 +11,7 @@ CUDA_VISIBLE_DEVICES=$1 python -u dmv_flow_train.py \
         --mode supervised_wopos \
         --model nice \
         --prob_const 1. \
-        --bert_dir bert-base-multilingual-cased \
+        --bert_dir bert-base-multilingual-cased-emb \
         --max_len 200 \
         --pos_emb_dim 300 \
         --em_train \

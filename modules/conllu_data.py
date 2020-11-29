@@ -69,7 +69,8 @@ class ConlluData(object):
                         raise ValueError("head is itself !")
 
             text.append(sent_list)
-            embedding.append(self.text_to_embed(id_, sent_list, embed))
+            if embed is not None:
+                embedding.append(self.text_to_embed(id_, sent_list, embed))
             tags.append(tag_list)
             heads.append(head_list)
             right_num_deps.append(right_num_deps_)

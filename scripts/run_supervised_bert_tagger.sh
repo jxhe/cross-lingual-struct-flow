@@ -11,6 +11,6 @@ CUDA_VISIBLE_DEVICES=$1 python -u markov_flow_train.py \
         --lang en \
         --model nice \
         --mode supervised \
-        --bert_dir bert-base-multilingual-cased \
+        --bert_dir bert-base-multilingual-cased-emb \
         --set_seed \
 

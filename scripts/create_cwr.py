@@ -4,11 +4,11 @@ for the dataset
 
 """
 
-if __name__ == "__main__" and __package__ is None:
-    from sys import path
-    from os.path import dirname as dir
+# if __name__ == "__main__" and __package__ is None:
+from sys import path
+from os.path import dirname as dir
 
-    path.append(dir(path[0]))
+path.append(dir(path[0]))
 
 import os
 import importlib
@@ -19,7 +19,7 @@ import numpy as np
 
 from tqdm import tqdm
 from modules import ConlluData
-from pytorch_pretrained_bert import BertTokenizer, BertModel
+from transformers import *
 
 def save_emb_to_hdf5(data, fname, tokenizer, model, device):
     print("writing {}\n".format(fname))
@@ -37,10 +37,10 @@ def save_emb_to_hdf5(data, fname, tokenizer, model, device):
             if len(bert_tokens) <= 512:
                 indexed_tokens = tokenizer.convert_tokens_to_ids(bert_tokens)
                 tokens_tensor = torch.tensor([indexed_tokens], device=device)
-                encoded_layers, _ = model(tokens_tensor)
+                outputs = model(tokens_tensor)
 
                 # use the last layer of embedding
-                emb = encoded_layers[-1].squeeze(0)
+                emb = outputs[0].squeeze(0)
 
                 # (seq_len, nfeatures)
                 emb = emb[orig_to_tok_map].cpu().numpy()
@@ -53,15 +53,15 @@ def save_emb_to_hdf5(data, fname, tokenizer, model, device):
                 tokens_tensor_1 = torch.tensor([indexed_tokens_1], device=device)
                 tokens_tensor_2 = torch.tensor([indexed_tokens_2], device=device)
 
-                encoded_layers, _ = model(tokens_tensor_1)
+                outputs = model(tokens_tensor_1)
 
                 # use the last layer of embedding
-                emb_1 = encoded_layers[-1].squeeze(0)
+                emb_1 = outputs[0].squeeze(0)
 
-                encoded_layers, _ = model(tokens_tensor_2)
+                outputs = model(tokens_tensor_2)
 
                 # use the last layer of embedding
-                emb_2 = encoded_layers[-1].squeeze(0)
+                emb_2 = outputs[0].squeeze(0)
 
                 emb = torch.cat((emb_1[:-1], emb_2[1:]), dim=0)
 
@@ -83,7 +83,7 @@ if __name__ == '__main__':
     params = importlib.import_module(config_file).params_markov
     args = argparse.Namespace(**vars(args), **params)
 
-    save_dir = "{}/{}".format(args.bert, args.lang)
+    save_dir = "{}-emb/{}".format(args.bert, args.lang)
 
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
@@ -94,8 +94,8 @@ if __name__ == '__main__':
     val_data = ConlluData(args.val_file, None, device=device)
     test_data = ConlluData(args.test_file, None, device=device)
 
-    tokenizer = BertTokenizer.from_pretrained(args.bert, do_lower_case=False)
-    model = BertModel.from_pretrained(args.bert)
+    tokenizer = AutoTokenizer.from_pretrained(args.bert, do_lower_case=False)
+    model = AutoModel.from_pretrained(args.bert)
     model.eval()
     model.to(device)
 
