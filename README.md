@@ -14,7 +14,7 @@ Please concact junxianh@cs.cmu.edu if you have any questions.
 ## Requirements
 
 - Python >= 3.6
-- PyTorch >= 0.4 (the code is tested up to version 1.7.0)
+- PyTorch >= 0.4
 
 Additional requirements can be installed via:
 ```bash
